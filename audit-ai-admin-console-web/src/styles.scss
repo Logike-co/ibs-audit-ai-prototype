@@ -1,0 +1,53 @@
+@use "@angular/material" as mat;
+@use "tailwindcss";
+@use "flag-icons/sass/flag-icons" with (
+  $flag-icons-use-square: false
+);
+@use "../../../design-tokens.generated";
+
+@font-face {
+  font-family: "KoHo";
+  src: url("/assets/fonts/KoHo-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "KoHo";
+  src: url("/assets/fonts/KoHo-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+html {
+  color-scheme: light;
+  @include mat.theme(
+    (
+      color: mat.$azure-palette,
+      typography: Roboto,
+      density: 0,
+    )
+  );
+
+  --mat-sys-primary: var(--color-brand);
+  --mat-sys-on-primary: var(--color-brand-contrast);
+  --mat-sys-surface: var(--color-surface);
+  --mat-sys-on-surface: var(--color-on-surface);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+}
+
+.demo-us-labels-off .demo-us-label {
+  display: none !important;
+}

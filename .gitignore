@@ -1,0 +1,13 @@
+node_modules/
+.angular/
+dist/
+documentation/
+site/
+*.Identifier
+*Zone.Identifier*
+.DS_Store
+copy-demo.sh
+.husky/_
+.env
+.env.local
+*.log

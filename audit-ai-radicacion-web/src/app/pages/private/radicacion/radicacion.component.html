@@ -1,0 +1,270 @@
+<div class="p-8 max-w-4xl mx-auto">
+  <div class="bg-white rounded-lg shadow p-6 border border-gray-200">
+
+    <div class="flex justify-between items-center mb-6 border-b pb-4">
+      <div>
+        <h2 class="text-xl font-bold text-gray-800" *ngIf="paquete()">
+          Radicación {{ paquete()?.id }}
+        </h2>
+        <h2 class="text-xl font-bold text-gray-800" *ngIf="!paquete()">
+          Carga del paquete
+        </h2>
+        <p *ngIf="paquete()" class="text-xs text-gray-500 font-medium">
+          IPS: <strong class="text-gray-700">{{ paquete()?.ips }}</strong> · NIT: {{ paquete()?.nit }}
+        </p>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <span class="text-sm font-medium text-gray-600">Semáforo de validación:</span>
+        <span
+          class="px-3 py-1 rounded-full text-xs font-bold text-white shadow-sm transition-colors duration-300"
+          [ngClass]="{
+            'bg-red-600': semaforo() === 'ROJO',
+            'bg-emerald-500': semaforo() === 'VERDE',
+            'bg-slate-400': semaforo() === 'GRIS'
+          }">
+          {{ paquete()?.cerrado ? 'VERDE (RADICADO · INMUTABLE)' : semaforo() === 'ROJO' ? 'ROJO (BLOQUEO SIN NUR · RES. 0948)' : semaforo() === 'VERDE' ? 'VERDE (LISTO PARA RADICAR)' : 'PENDIENTE' }}
+        </span>
+      </div>
+    </div>
+
+    <ng-container *ngIf="!paquete()">
+      <div class="text-center py-8">
+        <h3 class="text-xl font-bold text-[var(--color-brand)] mb-2">Portal de carga y radicación (Res. 2284)</h3>
+        <p class="text-gray-600 mb-6 text-sm">Elija el tipo de contrato <strong>antes</strong> de cargar el ZIP (RN-RAD-TIPO-01 / GESTOR_DOC_46).</p>
+
+        <div class="max-w-xl mx-auto mb-4 text-left">
+          <label class="block text-xs font-bold text-slate-700 mb-1" for="tipo-contrato">Tipo de contrato</label>
+          <select id="tipo-contrato" [(ngModel)]="tipoContrato"
+                  class="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">Seleccione…</option>
+            <option value="EVENTO">Evento</option>
+            <option value="PAC">PAC</option>
+            <option value="CAPITA_INICIAL">Cápita inicial</option>
+            <option value="CAPITA_PERIODO">Cápita periodo</option>
+            <option value="PGP">PGP</option>
+            <option value="OTRA">Otra pactada</option>
+          </select>
+          <p *ngIf="tipoContrato" class="mt-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded px-3 py-2">
+            Documentos exigidos: {{ mapaDocumentos[tipoContrato] }}
+          </p>
+        </div>
+
+        <div class="border-2 border-dashed border-blue-300 rounded-lg p-8 bg-blue-50/60 hover:bg-blue-100/50 transition-colors cursor-pointer flex flex-col items-center justify-center relative max-w-xl mx-auto"
+             [class.opacity-50]="!tipoContrato"
+             [class.pointer-events-none]="!tipoContrato">
+          <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".zip" (change)="archivoSeleccionado = true" [disabled]="!tipoContrato">
+          <svg class="h-10 w-10 text-blue-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          <p class="text-blue-900 font-bold text-sm">Arrastre el paquete .zip de RIPS y facturas aquí</p>
+          <p class="text-xs text-blue-600 mt-1">Formatos soportados: .zip estructurado según MinSalud</p>
+          <p *ngIf="archivoSeleccionado" class="mt-3 text-emerald-600 font-bold text-xs bg-emerald-50 px-3 py-1 rounded border border-emerald-200">
+            ✓ Archivo cargado: paquete_radicacion_sos_2026.zip
+          </p>
+        </div>
+
+        <div class="mt-6 flex justify-center space-x-3">
+          <button
+            (click)="cargar()"
+            [disabled]="!archivoSeleccionado || !tipoContrato"
+            class="px-6 py-2.5 text-white rounded-md font-bold text-sm shadow hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            style="background-color: var(--color-brand);">
+            Validar y procesar archivo
+          </button>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-slate-200 max-w-2xl mx-auto">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Atajo de presentador (dos flujos):</p>
+          <div class="grid grid-cols-2 gap-3">
+            <button (click)="cargarPreset('EXITO')"
+                    class="p-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded text-left transition">
+              <span class="block text-xs font-bold text-emerald-900">Paquete conforme</span>
+              <span class="block text-[10px] text-emerald-700 mt-0.5">CUV válido · NUR por factura</span>
+            </button>
+            <button (click)="cargarPreset('ESC-04')"
+                    class="p-3 bg-red-50 hover:bg-red-100 border border-red-300 rounded text-left transition">
+              <span class="block text-xs font-bold text-red-900">Sin CUV (Res. 0948)</span>
+              <span class="block text-[10px] text-red-700 mt-0.5">Rechazo · cero NUR</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="paquete() && !paquete()?.cerrado">
+      <div class="space-y-4 mb-8">
+        <div class="bg-slate-50 border border-slate-200 p-4 rounded-md">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="text-sm font-bold text-slate-800">Resumen del paquete auditado por IA:</h3>
+            <span class="text-xs font-mono bg-slate-200 text-slate-700 px-2 py-0.5 rounded">Res. 2284 de 2023</span>
+          </div>
+          <div class="grid grid-cols-3 gap-4 text-sm">
+            <div class="bg-white p-3 rounded border border-slate-200">
+              <span class="block text-xs text-slate-500">Cuentas médicas:</span>
+              <span class="text-lg font-bold text-slate-900">{{ paquete()?.cuentas }}</span>
+            </div>
+            <div class="bg-white p-3 rounded border border-slate-200">
+              <span class="block text-xs text-slate-500">Valor total facturado:</span>
+              <span class="text-lg font-bold text-slate-900">{{ paquete()?.valorTotal | currency:'COP':'symbol':'1.0-0' }}</span>
+            </div>
+            <div class="bg-white p-3 rounded border border-slate-200">
+              <span class="block text-xs text-slate-500">Hallazgos de prevalidación:</span>
+              <span class="text-lg font-bold" [ngClass]="semaforo() === 'ROJO' ? 'text-red-600' : 'text-emerald-600'">
+                {{ semaforo() === 'ROJO' ? '1 (Sin CUV · sin NUR)' : '0 (Conforme)' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="paquete()?.rechazoSinNur" class="bg-red-50 border-l-4 border-red-600 p-4 rounded-r-md">
+          <div class="flex items-start justify-between">
+            <div>
+              <p class="text-sm text-red-900 font-bold">RECHAZO SIN NUR: factura sin Código Único de Validación (CUV)</p>
+              <p class="text-xs text-red-800 mt-1">
+                La factura <strong>{{ paquete()?.facturaProblema }}</strong> no cuenta con validación previa ante MinSalud.
+                Conforme a la <strong>Resolución 0948 de 2026 Art. 3.1</strong>, está prohibido radicar o emitir NUR sin CUV válido.
+                No corren términos legales de auditoría para la EPS.
+              </p>
+            </div>
+            <button
+              (click)="descargarConstanciaRechazo()"
+              class="px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white text-xs font-bold rounded shadow transition flex items-center space-x-1 shrink-0 ml-3">
+              <span>Constancia de rechazo</span>
+            </button>
+          </div>
+        </div>
+
+        <div *ngIf="paquete()?.estructuraOk && !paquete()?.rechazoSinNur" class="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded-r-md">
+          <div class="flex items-center">
+            <svg class="h-5 w-5 text-emerald-500 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+            </svg>
+            <p class="text-xs text-emerald-800 font-medium">
+              Estructura XSD y validación sintáctica JSON Schema conforme según Anexo Técnico MinSalud.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="paquete()?.facturas?.length" class="mb-6 border border-slate-200 rounded-lg overflow-hidden">
+        <div class="bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-600 uppercase tracking-wide flex justify-between">
+          <span>Informe de prevalidación · facturas del paquete</span>
+          <span class="font-medium normal-case tracking-normal text-slate-500">Sin NUR todavía · orientación para el radicador</span>
+        </div>
+        <div class="max-h-64 overflow-y-auto">
+          <table class="w-full text-xs">
+            <thead class="bg-slate-50 text-slate-500 sticky top-0">
+              <tr>
+                <th class="text-left px-3 py-1.5">Factura</th>
+                <th class="text-right px-3 py-1.5">Valor</th>
+                <th class="text-left px-3 py-1.5">Estado</th>
+                <th class="text-left px-3 py-1.5">Hallazgo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let f of paquete()?.facturas" class="border-t border-slate-100"
+                  [class.bg-red-50]="f.estado === 'RECHAZO_SIN_CUV'">
+                <td class="px-3 py-1.5 font-mono">{{ f.factura }}</td>
+                <td class="px-3 py-1.5 text-right">{{ f.valor | currency:'COP':'symbol':'1.0-0' }}</td>
+                <td class="px-3 py-1.5 font-bold">
+                  {{ f.estado === 'RECHAZO_SIN_CUV' ? 'Sin CUV (sin NUR)' : 'Conforme' }}
+                </td>
+                <td class="px-3 py-1.5 text-slate-600">{{ f.hallazgo || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="border-t pt-4 flex justify-end items-center">
+        <div class="flex items-center space-x-3">
+          <button
+            *ngIf="semaforo() === 'ROJO'"
+            (click)="verRechazoEnHistorial()"
+            class="px-5 py-2.5 rounded-md text-sm font-bold shadow transition bg-red-700 hover:bg-red-800 text-white">
+            Ver en Radicaciones
+          </button>
+          <button
+            (click)="nuevaCarga()"
+            class="px-5 py-2.5 rounded-md text-sm font-bold shadow transition bg-slate-100 hover:bg-slate-200 text-slate-700">
+            Cancelar carga
+          </button>
+          <button
+            *ngIf="semaforo() !== 'ROJO'"
+            (click)="radicar()"
+            class="px-6 py-2.5 text-white rounded-md shadow font-bold text-sm transition-all flex items-center space-x-2"
+            style="background-color: var(--color-brand);">
+            <span>Confirmar y radicar oficialmente (Res. 2284)</span>
+          </button>
+        </div>
+      </div>
+    </ng-container>
+
+    <ng-container *ngIf="paquete() && paquete()?.cerrado">
+      <div class="text-center py-4 space-y-2">
+        <div class="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600 text-xl font-bold">
+          ✓
+        </div>
+        <h3 class="text-xl font-black text-slate-900">Radicación exitosa</h3>
+        <p class="text-sm text-slate-600">
+          Resumen de lo radicado. Un NUR inmutable por factura (Res. 2284).
+        </p>
+      </div>
+
+      <div class="bg-slate-50 border border-slate-200 p-4 rounded-md mb-4">
+        <div class="grid grid-cols-3 gap-4 text-sm">
+          <div class="bg-white p-3 rounded border border-slate-200">
+            <span class="block text-xs text-slate-500">Facturas radicadas:</span>
+            <span class="text-lg font-bold text-slate-900">{{ paquete()?.cuentas }}</span>
+          </div>
+          <div class="bg-white p-3 rounded border border-slate-200">
+            <span class="block text-xs text-slate-500">Valor total:</span>
+            <span class="text-lg font-bold text-slate-900">{{ paquete()?.valorTotal | currency:'COP':'symbol':'1.0-0' }}</span>
+          </div>
+          <div class="bg-white p-3 rounded border border-slate-200">
+            <span class="block text-xs text-slate-500">IPS:</span>
+            <span class="text-sm font-bold text-slate-900">{{ paquete()?.ips }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-6 border border-slate-200 rounded-lg overflow-hidden">
+        <div class="bg-slate-100 px-3 py-2 text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+          NUR emitidos
+        </div>
+        <div class="max-h-64 overflow-y-auto">
+          <table class="w-full text-xs">
+            <thead class="bg-slate-50 text-slate-500 sticky top-0">
+              <tr>
+                <th class="text-left px-3 py-1.5">Factura</th>
+                <th class="text-left px-3 py-1.5">NUR</th>
+                <th class="text-right px-3 py-1.5">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let f of paquete()?.facturasRadicadas" class="border-t border-slate-100">
+                <td class="px-3 py-1.5 font-mono">{{ f.factura }}</td>
+                <td class="px-3 py-1.5 font-mono font-bold">{{ f.nur }}</td>
+                <td class="px-3 py-1.5 text-right">{{ f.valor | currency:'COP':'symbol':'1.0-0' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="flex justify-center space-x-3">
+        <button (click)="router.navigate(['/radicaciones'])"
+                class="px-5 py-2.5 text-white rounded-md text-xs font-bold shadow"
+                style="background-color: var(--color-brand);">
+          Ver en Radicaciones
+        </button>
+        <button (click)="nuevaCarga()"
+                class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-bold transition">
+          Nueva carga
+        </button>
+      </div>
+    </ng-container>
+
+  </div>
+</div>

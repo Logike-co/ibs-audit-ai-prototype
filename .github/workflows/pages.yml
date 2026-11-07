@@ -1,0 +1,75 @@
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            audit-ai-radicacion-web/package-lock.json
+            audit-ai-hitl-auditoria-web/package-lock.json
+            audit-ai-admin-console-web/package-lock.json
+
+      - name: Build Radicación
+        working-directory: audit-ai-radicacion-web
+        run: |
+          npm ci
+          npx ng build --configuration production --base-href /ibs-audit-ai-prototype/radicacion/
+
+      - name: Build HITL
+        working-directory: audit-ai-hitl-auditoria-web
+        run: |
+          npm ci
+          npx ng build --configuration production --base-href /ibs-audit-ai-prototype/hitl/
+
+      - name: Build Admin
+        working-directory: audit-ai-admin-console-web
+        run: |
+          npm ci
+          npx ng build --configuration production --base-href /ibs-audit-ai-prototype/admin/
+
+      - name: Assemble static site
+        run: |
+          mkdir -p site/radicacion site/hitl site/admin
+          cp -a audit-ai-radicacion-web/dist/angular-starter/browser/. site/radicacion/
+          cp -a audit-ai-hitl-auditoria-web/dist/angular-starter/browser/. site/hitl/
+          cp -a audit-ai-admin-console-web/dist/angular-starter/browser/. site/admin/
+          cp site/radicacion/index.html site/radicacion/404.html
+          cp site/hitl/index.html site/hitl/404.html
+          cp site/admin/index.html site/admin/404.html
+          cp index.html site/index.html
+          touch site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

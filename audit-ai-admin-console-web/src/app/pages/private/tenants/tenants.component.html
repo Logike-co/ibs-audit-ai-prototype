@@ -1,0 +1,166 @@
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6 flex justify-between items-center">
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+        <lucide-icon [img]="Building2" class="w-6 h-6 text-blue-600"></lucide-icon>
+        Gestión de Tenants (EPS)
+        <span class="demo-us-label bg-indigo-900 text-indigo-200 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-indigo-700">
+          US-21 · APROVISIONAMIENTO
+        </span>
+        <span class="demo-us-label bg-slate-800 text-slate-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-slate-700">
+          US-02 · AISLAMIENTO MULTI-TENANT
+        </span>
+      </h1>
+      <p class="text-slate-500 text-sm mt-1">Consola SuperAdmin IBS - Aprovisionamiento y Gestión Multi-Tenant</p>
+    </div>
+    <button 
+      *ngIf="!showProvisionForm()"
+      (click)="toggleProvisionForm()"
+      class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2 transition-colors">
+      <lucide-icon [img]="Plus" class="w-4 h-4"></lucide-icon>
+      Aprovisionar Nuevo Tenant EPS
+    </button>
+  </div>
+
+  <!-- Provisioning Form -->
+  <div *ngIf="showProvisionForm()" class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden transition-all duration-500">
+    <div class="border-b border-slate-100 bg-slate-50 p-4">
+      <h2 class="font-semibold text-slate-700">Formulario de Aprovisionamiento</h2>
+    </div>
+    
+    <div class="p-6">
+      <form class="grid grid-cols-1 md:grid-cols-2 gap-6" (ngSubmit)="provisionTenant()">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Razón Social EPS:</label>
+          <input type="text" [(ngModel)]="newTenant.name" name="name" placeholder="Ej. EPS Sanitas S.A.S." class="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">NIT:</label>
+          <input type="text" [(ngModel)]="newTenant.nit" name="nit" placeholder="Ej. 800251440-6" class="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Slug Identificador:</label>
+          <input type="text" [(ngModel)]="newTenant.slug" name="slug" placeholder="Ej. sanitas" class="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Email Admin Inicial:</label>
+          <input type="email" [(ngModel)]="newTenant.email" name="email" placeholder="admin.tecnica@sanitas.com.co" class="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Cuota Mensual (Límite):</label>
+          <select [(ngModel)]="newTenant.quota" name="quota" class="w-full px-4 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white">
+            <option value="50000">50.000 facturas/mes</option>
+            <option value="100000">100.000 facturas/mes</option>
+            <option value="500000">500.000 facturas/mes</option>
+            <option value="unlimited">Ilimitado</option>
+          </select>
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Bucket S3 Asignado (autogenerado):</label>
+          <div class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-500 sm:text-sm font-mono flex items-center gap-2">
+            <lucide-icon [img]="HardDrive" class="w-4 h-4"></lucide-icon>
+            {{ generatedS3Bucket || 's3://ibs-audit-ai-...' }}
+          </div>
+        </div>
+
+        <div class="md:col-span-2 flex justify-end gap-3 mt-4 border-t border-slate-100 pt-6">
+          <button type="button" (click)="toggleProvisionForm()" class="px-4 py-2 border border-slate-300 text-slate-700 rounded-md font-medium text-sm hover:bg-slate-50 transition-colors" [disabled]="isProvisioning()">
+            Cancelar
+          </button>
+          <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-md font-medium text-sm flex items-center gap-2 transition-colors shadow-sm disabled:opacity-50" [disabled]="isProvisioning() || !newTenant.name">
+            <span *ngIf="!isProvisioning()">Crear y Aprovisionar Tenant</span>
+            <span *ngIf="isProvisioning()" class="flex items-center gap-2">
+              <lucide-icon [img]="Loader2" class="w-4 h-4 animate-spin"></lucide-icon>
+              Aprovisionando...
+            </span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Asynchronous Provisioning State -->
+    <div *ngIf="isProvisioning() || provisioningState() === 'DONE'" class="bg-slate-900 text-slate-300 p-6 font-mono text-sm border-t border-slate-800">
+      <h3 class="text-white font-semibold mb-4 text-xs uppercase tracking-wider flex items-center gap-2">
+        <lucide-icon [img]="AlertCircle" class="w-4 h-4 text-blue-400"></lucide-icon>
+        Estado del Aprovisionamiento Asíncrono
+      </h3>
+      
+      <div class="space-y-3">
+        <div class="flex items-center gap-3" [class.text-emerald-400]="provisioningState() !== 'IDLE' && provisioningState() !== 'DB'" [class.opacity-50]="provisioningState() === 'IDLE'">
+          <lucide-icon [img]="provisioningState() === 'DB' ? Loader2 : CheckCircle2" [class.animate-spin]="provisioningState() === 'DB'" class="w-5 h-5"></lucide-icon>
+          <span>Esquema PostgreSQL <span class="text-white">"tenant_{{newTenant.slug}}"</span> creado (Flyway)</span>
+        </div>
+        
+        <div class="flex items-center gap-3" [class.text-emerald-400]="provisioningState() === 'COGNITO' || provisioningState() === 'DONE'" [class.opacity-50]="provisioningState() === 'IDLE' || provisioningState() === 'DB'">
+          <lucide-icon [img]="provisioningState() === 'S3' ? Loader2 : CheckCircle2" [class.animate-spin]="provisioningState() === 'S3'" class="w-5 h-5"></lucide-icon>
+          <span>Bucket S3 y políticas IAM aisladas provisionados</span>
+        </div>
+
+        <div class="flex items-center gap-3" [class.text-emerald-400]="provisioningState() === 'DONE'" [class.opacity-50]="provisioningState() !== 'DONE'">
+          <lucide-icon [img]="provisioningState() === 'COGNITO' ? Loader2 : CheckCircle2" [class.animate-spin]="provisioningState() === 'COGNITO'" class="w-5 h-5"></lucide-icon>
+          <span>Grupo y Usuario Administrador creados en AWS Cognito</span>
+        </div>
+
+        <div *ngIf="provisioningState() === 'DONE'" class="mt-4 pt-4 border-t border-slate-800 text-blue-400 flex items-center gap-2 bg-slate-800/50 p-3 rounded">
+          <lucide-icon [img]="CheckCircle2" class="w-5 h-5"></lucide-icon>
+          <span>Tenant listo para operación y recepción de radicaciones</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tenants List -->
+  <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+    <div class="border-b border-slate-100 bg-slate-50 p-4">
+      <h2 class="font-semibold text-slate-700">Tenants Aprovisionados (EPS / Aseguradoras)</h2>
+    </div>
+    
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse">
+        <thead>
+          <tr class="bg-white border-b border-slate-200">
+            <th class="py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tenant / EPS</th>
+            <th class="py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">NIT</th>
+            <th class="py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider">Esquema DB</th>
+            <th class="py-3 px-6 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Estado</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr *ngFor="let tenant of tenants()" class="hover:bg-slate-50 transition-colors">
+            <td class="py-4 px-6">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs uppercase">
+                  {{ tenant.name.substring(0,2) }}
+                </div>
+                <span class="font-medium text-slate-800">{{ tenant.name }}</span>
+              </div>
+            </td>
+            <td class="py-4 px-6 text-sm text-slate-600 font-mono">{{ tenant.nit }}</td>
+            <td class="py-4 px-6">
+              <div class="flex items-center gap-2 text-sm text-slate-600 font-mono">
+                <lucide-icon [img]="Database" class="w-4 h-4 text-slate-400"></lucide-icon>
+                {{ tenant.schema }}
+              </div>
+            </td>
+            <td class="py-4 px-6 text-right">
+              <span 
+                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
+                [ngClass]="{
+                  'bg-emerald-50 text-emerald-700 border-emerald-200': tenant.status === 'ACTIVO',
+                  'bg-amber-50 text-amber-700 border-amber-200': tenant.status === 'PENDIENTE'
+                }">
+                {{ tenant.status }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
