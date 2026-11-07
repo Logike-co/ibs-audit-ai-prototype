@@ -1,7 +1,7 @@
 import { Component, OnInit, Signal, signal, computed, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuditoriaService } from '../../../services/auditoria/auditoria.service';
 
 // ==============================================================================
@@ -132,6 +132,48 @@ export interface AceptacionTacitaLey1438 {
   estadoDespachoPago: 'LISTO_PARA_PAGO' | 'DESPACHADO_A_CORE_EPS';
 }
 
+export interface CitaSoporteGlosa {
+  etiqueta: string;
+  documentoId: string;
+  pagina: number;
+  boundingBoxId?: string;
+  extractoCita: string;
+}
+
+export interface DecisionGlosa {
+  tipo: 'ACEPTADA_IA' | 'AJUSTADA_AUDITOR' | 'MANTENIDA_TOTAL' | 'ESCALADA_ESPECIALISTA';
+  etiqueta: string;
+  valorFinalGlosaCop: number;
+  argumentoFinal: string;
+  auditor: string;
+  timestamp: string;
+}
+
+export interface GlosaFactura {
+  id: string;
+  lineaItem: number;
+  codigoCups: string;
+  descripcionItem: string;
+  tituloCorto: string;
+  causal: CausalGlosa;
+  valorFacturadoItemCop: number;
+  valorTarifaPactadaItemCop: number;
+  valorGlosaInicialCop: number;
+  valorGlosaSugeridaIaCop: number;
+  valorGlosaDefinitivaCop: number;
+  veredictoIa: 'LEVANTAR_PARCIAL' | 'RATIFICAR_TOTAL' | 'LEVANTAR_TOTAL' | 'APROBAR_ITEM';
+  confianzaIaPorcentaje: number;
+  causaDetalle: string;
+  solucionSugeridaIa: string;
+  sustentoNormativo: string;
+  fuentesCite: string[];
+  borradorRespuestaIa: string;
+  citasSoporte: CitaSoporteGlosa[];
+  documentosRelacionadosIds: string[];
+  estadoGlosa: 'PENDIENTE' | 'RESUELTA' | 'ESCALADA';
+  decisionAplicada?: DecisionGlosa;
+}
+
 export interface CasoAuditoria {
   id: string;
   nur: string | null;
@@ -164,6 +206,7 @@ export interface CasoAuditoria {
   confianzaIaPorcentaje: number;
   causalGlosa: CausalGlosa | null;
   itemsFacturados: ItemFacturado[];
+  glosasFactura: GlosaFactura[];
   soportesDocumentales: SoporteDocumental[];
   boundingBoxes: BoundingBox[];
   explicacionIaRag: ExplicacionIaRag;
@@ -181,219 +224,749 @@ export interface CasoAuditoria {
 }
 
 // ==============================================================================
-// COMPONENTE ANGULAR 19+ STANDALONE: SPLIT SCREEN AUDIT-AI
+// COMPONENTE ANGULAR 19+ STANDALONE: WORKBENCH TRI-PANE SPLIT-VIEW AUDIT-AI
 // ==============================================================================
 
 @Component({
   selector: 'app-split-screen',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   host: { class: 'block h-full min-h-0 flex-1 overflow-hidden' },
   template: `
-    <!-- CONTENEDOR PRINCIPAL DEL SPLIT SCREEN DE AUDITORÍA -->
-    <div class="h-full min-h-0 w-full flex flex-col bg-slate-50 text-slate-800 font-sans overflow-hidden select-none">
+    <!-- CONTENEDOR PRINCIPAL WORKBENCH TRI-PANE (100VH SIN SCROLL GLOBAL) -->
+    <div class="h-full min-h-0 w-full flex flex-col bg-slate-100 text-slate-800 font-sans overflow-hidden select-none relative">
 
-      <section class="bg-white border-b border-slate-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 z-10">
-        <!-- Datos de Identificación FEV / NUR / CUV -->
-        <div class="flex items-center flex-wrap gap-2 text-xs font-mono">
-          <div class="bg-slate-50 px-2.5 py-1 rounded border border-slate-200 flex items-center gap-1.5">
-            <span class="text-slate-500">Factura:</span>
-            <span class="text-[var(--color-brand)] font-bold text-sm">{{ casoActivo().fevNumero }}</span>
-          </div>
-
-          <div class="bg-slate-50 px-2.5 py-1 rounded border border-slate-200 flex items-center gap-1.5">
-            <span class="text-slate-500">NUR:</span>
-            <span *ngIf="casoActivo().nur" class="text-slate-800" [title]="casoActivo().nur || ''">{{ casoActivo().nur }}</span>
-            <span *ngIf="!casoActivo().nur" class="text-red-700 font-bold bg-red-50 px-1 rounded border border-red-200">SIN NUR (NO RADICADO)</span>
-          </div>
-
-          <div class="bg-slate-50 px-2.5 py-1 rounded border border-slate-200 flex items-center gap-1.5 max-w-xs truncate">
-            <span class="text-slate-500">CUV:</span>
-            <span *ngIf="casoActivo().cuv" class="text-emerald-700 truncate" [title]="casoActivo().cuv || ''">{{ casoActivo().cuv }}</span>
-            <span *ngIf="!casoActivo().cuv" class="text-red-700 font-bold">AUSENTE / INVÁLIDO</span>
-          </div>
-          <span class="demo-us-label text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-mono font-bold">US-11</span>
-        </div>
-
-        <!-- Semáforo Dinámico de Términos Legales (Res. 2284 & Ley 1438) -->
-        <div class="flex items-center gap-3">
-          <div [class]="obtenerEstiloSemaforoBadge(casoActivo().semaforo.nivelRiesgo)" class="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 shadow-md">
-            <span class="w-2.5 h-2.5 rounded-full animate-ping" [style.backgroundColor]="casoActivo().semaforo.colorHex"></span>
-            <span *ngIf="casoActivo().estadoAuditoria === 'RECHAZO_SIN_NUR'">Rechazo Inmediato Res. 0948 (Sin Términos)</span>
-            <span *ngIf="casoActivo().estadoAuditoria === 'FACTURA_ACEPTADA_TACITA'">Aceptada Tácita (20 Días Perimidos)</span>
-            <span *ngIf="casoActivo().estadoAuditoria === 'DEVOLUCION_FORMULADA'">Ciclo 5 Días Devolución: {{ casoActivo().semaforo.diasHabilesRestantes }} días restantes</span>
-            <span *ngIf="casoActivo().estadoAuditoria !== 'RECHAZO_SIN_NUR' && casoActivo().estadoAuditoria !== 'FACTURA_ACEPTADA_TACITA' && casoActivo().estadoAuditoria !== 'DEVOLUCION_FORMULADA'">
-              Vence en {{ casoActivo().semaforo.diasHabilesRestantes }} días hábiles
-            </span>
-            <span class="opacity-80">|</span>
-            <span class="text-[11px] uppercase font-mono">{{ casoActivo().semaforo.nivelRiesgo }}</span>
-          </div>
-
-          <!-- Badge Predictivo IA y Causal (apagado en pertinencia CL si el toggle está off) -->
-          <div *ngIf="!ocultarSugerenciaPertinencia()" class="bg-slate-50 border border-slate-200 px-3 py-1 rounded-lg flex items-center gap-2 text-xs">
-            <span class="text-[var(--color-brand)] font-semibold">Predicción IA:</span>
-            <span class="text-slate-800 font-bold uppercase">{{ casoActivo().tipoResultadoPredictivo }}</span>
-            <span class="text-slate-500 font-mono text-[11px]">({{ casoActivo().confianzaIaPorcentaje }}% conf.)</span>
-          </div>
-          <div *ngIf="ocultarSugerenciaPertinencia()" class="bg-amber-50 border border-amber-200 px-3 py-1 rounded-lg flex items-center gap-2 text-xs">
-            <span class="text-amber-800 font-semibold">Pertinencia clínica:</span>
-            <span class="text-amber-900">sin sugerencia IA — revisión humana obligatoria</span>
-          </div>
-          <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
-            <input type="checkbox" class="rounded border-slate-400"
-                   [checked]="sugerirPertinenciaIa()"
-                   (change)="onSugerirPertinenciaIa($event)">
-            Sugerir pertinencia con IA
-          </label>
-        </div>
-      </section>
-
-      <!-- CUERPO PRINCIPAL DIVIDIDO EN DOS PANELES (50% / 50%) -->
-      <main class="flex-1 min-h-0 flex overflow-hidden relative">
+      <!-- =================================================================== -->
+      <!-- BARRA SUPERIOR STICKY: CONTEXTO FACTURA, PROGRESO Y CONTROLES (64PX) -->
+      <!-- =================================================================== -->
+      <header class="h-16 bg-white border-b border-slate-200 px-4 flex items-center justify-between shrink-0 z-20 shadow-sm">
         
+        <!-- Izquierda: Volver a Bandeja + Metadatos de la Factura -->
+        <div class="flex items-center space-x-3">
+          <a routerLink="/bandeja" class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-900 text-xs font-semibold flex items-center gap-1.5 transition" title="Volver a la bandeja de excepciones (HITL)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+            <span class="hidden sm:inline">Bandeja</span>
+          </a>
+
+          <div class="h-6 w-px bg-slate-200"></div>
+
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="font-mono font-bold text-sm text-[var(--color-brand)]">{{ casoActivo().fevNumero }}</span>
+              <span *ngIf="casoActivo().nur" class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-semibold">{{ casoActivo().nur }}</span>
+              <span *ngIf="!casoActivo().nur" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-red-100 text-red-800 border border-red-200 font-bold">SIN NUR</span>
+              <span class="text-xs font-bold text-slate-900 truncate max-w-[200px] xl:max-w-[260px]" [title]="casoActivo().prestador.nombre">{{ casoActivo().prestador.nombre }}</span>
+              <span class="text-[10px] text-slate-400 font-mono hidden md:inline">NIT: {{ casoActivo().prestador.nit }}</span>
+            </div>
+            <div class="flex items-center space-x-2 text-[11px] text-slate-500 font-mono">
+              <span>Total: <strong class="text-slate-800">\${{ casoActivo().resumenFinanciero.valorFacturadoCop | number:'1.0-0' }}</strong></span>
+              <span>•</span>
+              <span>Glosado Ini: <strong class="text-red-600">\${{ conciliacionFactura().glosaInicialTotal | number:'1.0-0' }}</strong></span>
+              <span>•</span>
+              <span class="hidden lg:inline">Rad: {{ casoActivo().fechas.fechaRadicacion | date:'dd/MM/yyyy' }}</span>
+              <span>•</span>
+              <span [class]="casoActivo().semaforo.nivelRiesgo === 'ROJO' ? 'text-red-600 font-bold' : casoActivo().semaforo.nivelRiesgo === 'AMARILLO' ? 'text-amber-600 font-bold' : 'text-emerald-600 font-bold'">
+                {{ casoActivo().semaforo.diasHabilesRestantes }} d. hábiles
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Centro: Medidor de Progreso de Auditoría de Glosas -->
+        <div class="hidden md:flex items-center space-x-3 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+          <div class="text-right">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Progreso Auditoría</p>
+            <p class="text-xs font-bold text-slate-800 font-mono">
+              {{ progresoGlosas().resueltas }}/{{ progresoGlosas().total }} Glosas ({{ progresoGlosas().porcentaje }}%)
+            </p>
+          </div>
+          <!-- Barra de progreso -->
+          <div class="w-28 xl:w-36 h-2.5 bg-slate-200 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-300" [style.width.%]="progresoGlosas().porcentaje"></div>
+          </div>
+          <!-- CTA de Finalización -->
+          <button 
+            (click)="finalizarAuditoriaFactura()"
+            [disabled]="!progresoGlosas().completado"
+            [class]="progresoGlosas().completado
+              ? 'px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition active:scale-95'
+              : 'px-3 py-1.5 rounded-lg bg-slate-200 text-slate-400 font-semibold text-xs cursor-not-allowed flex items-center gap-1.5'"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            <span>{{ progresoGlosas().completado ? 'Finalizar Factura' : (progresoGlosas().pendientes + ' pend.') }}</span>
+          </button>
+        </div>
+
+        <!-- Derecha: Selector de Casos Demo + Toggle Auto-Avance -->
+        <div class="flex items-center space-x-2">
+          <!-- Toggle Auto-Avance -->
+          <button 
+            (click)="toggleAutoAvance()"
+            [class]="autoAvance()
+              ? 'px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-semibold flex items-center gap-1 transition'
+              : 'px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 text-[11px] font-medium flex items-center gap-1 transition'"
+            title="Avanzar automáticamente a la siguiente glosa pendiente tras resolver una (250ms)"
+          >
+            <span class="w-2 h-2 rounded-full" [class]="autoAvance() ? 'bg-indigo-600 animate-pulse' : 'bg-slate-400'"></span>
+            <span class="hidden sm:inline">Auto-avanzar</span>
+            <span class="font-mono text-[10px]">{{ autoAvance() ? 'ON' : 'OFF' }}</span>
+          </button>
+
+          <div class="h-6 w-px bg-slate-200 hidden sm:block"></div>
+
+          <!-- Selector de Escenario Demo -->
+          <div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[10px] font-mono">
+            <button 
+              *ngFor="let esc of ['ESC-01', 'ESC-02', 'ESC-03', 'ESC-04', 'ESC-05', 'ESC-06']"
+              (click)="seleccionarCaso(esc)"
+              [class]="casoActivoId() === esc
+                ? 'px-2 py-1 rounded font-bold bg-white text-[var(--color-brand)] shadow-sm'
+                : 'px-2 py-1 text-slate-500 hover:text-slate-800'"
+              [title]="'Cargar caso ' + esc"
+            >
+              {{ esc }}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- =================================================================== -->
+      <!-- CUERPO PRINCIPAL DEL WORKBENCH: TRI-PANE SPLIT-VIEW -->
+      <!-- =================================================================== -->
+      <main class="flex-1 min-h-0 flex overflow-hidden relative">
+
         <!-- =================================================================== -->
-        <!-- PANEL IZQUIERDO: VISOR DOCUMENTAL & BOUNDING BOX OCR (50%) -->
+        <!-- PANEL 1: MASTER RAIL (COLA DE NAVEGACIÓN DE GLOSAS - 24% ANCHO) -->
         <!-- =================================================================== -->
-        <section class="w-1/2 bg-slate-100 border-r border-slate-200 flex flex-col overflow-hidden min-h-0">
+        <aside class="w-[24%] min-w-[270px] max-w-[330px] bg-slate-50 border-r border-slate-200 flex flex-col overflow-hidden min-h-0 shrink-0">
           
-          <!-- Pestañas de Documentos Soportes -->
-          <div class="h-10 bg-white border-b border-slate-200 px-3 flex items-center justify-between shrink-0">
-            <div class="flex items-center space-x-1 overflow-x-auto min-w-0 max-w-[min(100%,52rem)] pr-2">
+          <!-- Encabezado del Master Rail y Filtro de Segmento -->
+          <div class="p-3 bg-white border-b border-slate-200 space-y-2 shrink-0">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                <span>Glosas de la Factura</span>
+              </h2>
+              <span class="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold border border-slate-200">
+                {{ glosasDeFactura().length }}
+              </span>
+            </div>
+
+            <!-- Segmented Control de Filtro -->
+            <div class="grid grid-cols-3 gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px] font-semibold text-center">
+              <button 
+                (click)="filtroEstadoGlosa.set('TODAS')" 
+                [class]="filtroEstadoGlosa() === 'TODAS' ? 'bg-white text-slate-900 shadow-sm rounded py-1 font-bold' : 'text-slate-500 hover:text-slate-900 py-1'"
+              >
+                Todas ({{ progresoGlosas().total }})
+              </button>
+              <button 
+                (click)="filtroEstadoGlosa.set('PENDIENTES')" 
+                [class]="filtroEstadoGlosa() === 'PENDIENTES' ? 'bg-white text-amber-900 shadow-sm rounded py-1 font-bold' : 'text-slate-500 hover:text-slate-900 py-1'"
+              >
+                Pend ({{ progresoGlosas().pendientes }})
+              </button>
+              <button 
+                (click)="filtroEstadoGlosa.set('RESUELTAS')" 
+                [class]="filtroEstadoGlosa() === 'RESUELTAS' ? 'bg-white text-emerald-900 shadow-sm rounded py-1 font-bold' : 'text-slate-500 hover:text-slate-900 py-1'"
+              >
+                Res ({{ progresoGlosas().resueltas }})
+              </button>
+            </div>
+          </div>
+
+          <!-- Lista Scrollable de Tarjetas de Glosa -->
+          <div class="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2">
+            
+            <div 
+              *ngFor="let glosa of glosasFiltradas()"
+              (click)="seleccionarGlosa(glosa.id)"
+              [class]="glosa.id === glosaActivaId()
+                ? 'p-3 rounded-xl border-2 border-indigo-600 bg-indigo-50/70 shadow-sm cursor-pointer transition-all'
+                : 'p-3 rounded-xl border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60 cursor-pointer transition-all'"
+            >
+              <!-- Fila Superior: Código, Ítem y Estado -->
+              <div class="flex items-center justify-between text-[11px] mb-1">
+                <div class="flex items-center space-x-1.5">
+                  <span class="font-mono font-bold text-xs" [class]="glosa.id === glosaActivaId() ? 'text-indigo-900' : 'text-slate-800'">
+                    #{{ glosa.id }}
+                  </span>
+                  
+                  <!-- Badge de Estado -->
+                  <span *ngIf="glosa.estadoGlosa === 'PENDIENTE'" class="inline-flex items-center gap-1 text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    <span>Pendiente</span>
+                  </span>
+                  <span *ngIf="glosa.estadoGlosa === 'RESUELTA'" class="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span>✓ Resuelta</span>
+                  </span>
+                  <span *ngIf="glosa.estadoGlosa === 'ESCALADA'" class="inline-flex items-center gap-1 text-[10px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
+                    <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                    <span>⚑ Escalada</span>
+                  </span>
+                </div>
+
+                <span class="font-mono text-[10px] text-slate-500">Ít. {{ glosa.lineaItem }} · {{ glosa.codigoCups }}</span>
+              </div>
+
+              <!-- Título de la Causa -->
+              <h3 class="text-xs font-bold text-slate-900 leading-snug line-clamp-2 mb-2">
+                {{ glosa.tituloCorto }}
+              </h3>
+
+              <!-- Fila Inferior: Montos y Confianza IA -->
+              <div class="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-100">
+                <div>
+                  <span class="text-[9px] text-slate-400 uppercase font-sans font-semibold block">Glosado</span>
+                  <span class="font-mono font-bold text-red-600">\${{ glosa.valorGlosaInicialCop | number:'1.0-0' }}</span>
+                </div>
+                <div class="text-right">
+                  <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold font-mono"
+                        [ngClass]="glosa.veredictoIa === 'RATIFICAR_TOTAL' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'">
+                    IA: {{ glosa.confianzaIaPorcentaje }}%
+                  </span>
+                </div>
+              </div>
+
+              <!-- Traza de Decisión si ya fue resuelta -->
+              <div *ngIf="glosa.decisionAplicada" class="mt-2 pt-1 border-t border-dashed border-emerald-200 text-[10px] text-emerald-800 font-mono flex justify-between items-center bg-emerald-50/80 -mx-1 px-1.5 py-0.5 rounded">
+                <span class="truncate max-w-[130px]">{{ glosa.decisionAplicada.etiqueta }}</span>
+                <span class="font-bold">\${{ glosa.decisionAplicada.valorFinalGlosaCop | number:'1.0-0' }}</span>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <div *ngIf="glosasFiltradas().length === 0" class="p-8 text-center text-slate-400 text-xs space-y-1">
+              <p class="font-semibold">Sin glosas en este filtro</p>
+              <p class="text-[11px]">Seleccione "Todas" para ver la lista completa.</p>
+            </div>
+          </div>
+        </aside>
+
+        <!-- =================================================================== -->
+        <!-- PANEL 2: RESOLUTION CANVAS (MESA DE RESOLUCIÓN - 40% ANCHO) -->
+        <!-- =================================================================== -->
+        <section 
+          class="bg-white border-r border-slate-200 flex flex-col overflow-hidden min-h-0 transition-all duration-200"
+          [style.width.%]="anchoPanelResolucion()"
+        >
+          
+          <!-- BANNER REGULATORIO ESPECIAL (ESC-04, ESC-05, ESC-06) -->
+          <div *ngIf="casoActivo().estadoAuditoria === 'RECHAZO_SIN_NUR' || casoActivo().estadoAuditoria === 'DEVOLUCION_FORMULADA' || casoActivo().estadoAuditoria === 'FACTURA_ACEPTADA_TACITA'" class="p-3 bg-amber-50/80 border-b border-amber-200 text-xs">
+            
+            <!-- CASO 1: RECHAZO SIN NUR (ESC-04 / RES. 0948 ART 3.1) -->
+            <div *ngIf="casoActivo().estadoAuditoria === 'RECHAZO_SIN_NUR'" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-red-800 flex items-center gap-1.5">
+                  ⛔ Rechazo Inmediato en Ventanilla (Res. 0948 de 2026 Art. 3.1)
+                </span>
+                <span class="px-2 py-0.5 rounded bg-red-100 text-red-900 font-mono text-[10px] font-bold">Sin Términos Legales</span>
+              </div>
+              <p class="text-[11px] text-red-900 leading-relaxed">
+                Resolución 0948 de 2026: Prohibición expresa de radicar paquetes sin CUV previo y validado ante el Mecanismo Único de MinSalud.
+              </p>
+              <button (click)="descargarConstanciaRechazo()" class="py-1.5 px-3 rounded bg-red-700 hover:bg-red-600 text-white text-xs font-bold shadow flex items-center gap-1.5">
+                <span>📄 Descargar Constancia de Rechazo Inmediato (PDF)</span>
+              </button>
+            </div>
+
+            <!-- CASO 2: CICLO DEVOLUCIÓN 5-5-5 (ESC-05 / RES. 2284 ART 6) -->
+            <div *ngIf="casoActivo().estadoAuditoria === 'DEVOLUCION_FORMULADA'" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-orange-800 flex items-center gap-1.5">
+                  ⏱ Ciclo de Devolución 5-5-5 en Curso (Res. 2284 Art. 6)
+                </span>
+                <span class="px-2 py-0.5 rounded bg-orange-100 text-orange-900 font-mono text-[10px] font-bold">2 Días Restantes</span>
+              </div>
+              <p class="text-[11px] text-orange-950 leading-relaxed">
+                Resolución 2284 de 2023: Ciclo taxativo de devoluciones 5-5-5 y preclusión formal de términos al día 6 hábil.
+              </p>
+              <div class="flex flex-wrap gap-1.5">
+                <button (click)="simularRespuestaIps('RE9701')" class="py-1 px-2.5 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold">IPS RE9701 (Aceptar)</button>
+                <button (click)="simularRespuestaIps('RE9601')" class="py-1 px-2.5 rounded bg-indigo-700 hover:bg-indigo-600 text-white text-[11px] font-bold">IPS RE9601 (Controvertir)</button>
+                <button (click)="simularPreclusionDevolucion()" class="py-1 px-2.5 rounded bg-red-800 hover:bg-red-700 text-white text-[11px] font-bold">Simular Día 6 (Precluir)</button>
+              </div>
+            </div>
+
+            <!-- CASO 3: ACEPTACIÓN TÁCITA LEY 1438 (ESC-06) -->
+            <div *ngIf="casoActivo().estadoAuditoria === 'FACTURA_ACEPTADA_TACITA'" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-amber-900 flex items-center gap-1.5">
+                  ★ Título Valor por Aceptación Tácita (20 Días Perimidos)
+                </span>
+                <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-mono text-[10px] font-bold">22 Días Radicada</span>
+              </div>
+              <p class="text-[11px] text-amber-950 leading-relaxed">
+                Ley 1438 de 2011 Art. 57 y Decreto 441 de 2022 Art. 2.5.3.4.4.4: Título Valor por Aceptación Tácita tras 20 días hábiles sin formulación de glosa.
+              </p>
+              <button (click)="despacharPagoAceptacionTacita()" class="py-1.5 px-3 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow">
+                Despachar a Pago Core EPS
+              </button>
+            </div>
+          </div>
+
+          <!-- CUERPO SCROLLABLE DEL PANEL CENTRAL -->
+          <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+
+            <!-- SI TODAS LAS GLOSAS ESTÁN RESUELTAS: TARJETA DE RESUMEN Y CONCILIACIÓN FINAL -->
+            <div *ngIf="progresoGlosas().completado" class="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-500/70 rounded-2xl p-5 space-y-4 shadow-sm animate-fade-in">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <div class="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">✓</div>
+                  <div>
+                    <h3 class="text-sm font-bold text-emerald-950">Conciliación Final de la Factura Completa</h3>
+                    <p class="text-[11px] text-emerald-800">100% de las glosas auditadas conforme a la Resolución 2284 de 2023.</p>
+                  </div>
+                </div>
+                <span class="text-xs font-mono font-bold px-2.5 py-1 rounded bg-emerald-200 text-emerald-900">AUDITADA</span>
+              </div>
+
+              <!-- Grilla de 4 KPIs de Conciliación -->
+              <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 pt-1 font-mono text-center">
+                <div class="bg-white p-2.5 rounded-xl border border-emerald-200 shadow-sm">
+                  <span class="text-[10px] text-slate-400 uppercase font-sans font-semibold block">Facturado</span>
+                  <span class="text-xs font-bold text-slate-800">\${{ conciliacionFactura().facturadoTotal | number:'1.0-0' }}</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-emerald-200 shadow-sm">
+                  <span class="text-[10px] text-slate-400 uppercase font-sans font-semibold block">Glosa Inicial</span>
+                  <span class="text-xs font-bold text-red-600">\${{ conciliacionFactura().glosaInicialTotal | number:'1.0-0' }}</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-emerald-200 shadow-sm">
+                  <span class="text-[10px] text-slate-400 uppercase font-sans font-semibold block">Glosa Definitiva</span>
+                  <span class="text-xs font-bold text-amber-700">\${{ conciliacionFactura().glosaDefinitivaTotal | number:'1.0-0' }}</span>
+                </div>
+                <div class="bg-white p-2.5 rounded-xl border border-emerald-200 shadow-sm">
+                  <span class="text-[10px] text-slate-400 uppercase font-sans font-semibold block">Neto a Pagar</span>
+                  <span class="text-xs font-bold text-emerald-700">\${{ conciliacionFactura().aprobadoFinalTotal | number:'1.0-0' }}</span>
+                </div>
+              </div>
+
+              <!-- Botón Primario de Cierre de Factura -->
+              <button 
+                (click)="finalizarAuditoriaFactura()"
+                class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-700/20 flex items-center justify-center gap-2 transition active:scale-98"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                <span>Confirmar Auditoría y Pasar a Siguiente Factura (⏎)</span>
+              </button>
+            </div>
+
+            <!-- GLOSA ACTIVA EN RESOLUCIÓN -->
+            <ng-container *ngIf="glosaActiva() as glosa">
+              
+              <!-- Cabecera de la Glosa Activa -->
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div>
+                  <div class="flex items-center space-x-2">
+                    <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-900 border border-indigo-200">
+                      #{{ glosa.id }}
+                    </span>
+                    <h2 class="text-sm font-bold text-slate-900">
+                      Ítem {{ glosa.lineaItem }}: {{ glosa.descripcionItem }}
+                    </h2>
+                  </div>
+                  <p class="text-[11px] text-slate-500 font-mono mt-0.5">
+                    CUPS: <strong>{{ glosa.codigoCups }}</strong> · Valor Cobrado: \${{ glosa.valorFacturadoItemCop | number:'1.0-0' }}
+                  </p>
+                </div>
+
+                <div class="text-right">
+                  <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block">Glosa Inicial</span>
+                  <span class="text-sm font-bold font-mono text-red-600">\${{ glosa.valorGlosaInicialCop | number:'1.0-0' }}</span>
+                </div>
+              </div>
+
+              <!-- BLOQUE 1: CAUSA DE LA GLOSA (DIAGNÓSTICO) -->
+              <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                    <span>1. Causa de la Glosa</span>
+                  </span>
+                  <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200">
+                    Causal: <strong class="text-red-700">{{ glosa.causal.codigoManualUnico }}</strong> (Res. 3047: {{ glosa.causal.codigoRes3047 }})
+                  </span>
+                </div>
+
+                <p class="text-xs text-slate-800 leading-relaxed font-medium">
+                  {{ glosa.causaDetalle }}
+                </p>
+
+                <!-- Grilla Comparativa de Valores de la Glosa -->
+                <div class="grid grid-cols-3 gap-2 pt-1 text-[11px] font-mono">
+                  <div class="bg-white p-2 rounded-lg border border-slate-200 text-center">
+                    <span class="text-[9px] text-slate-400 block font-sans font-semibold uppercase">Facturado</span>
+                    <span class="font-bold text-slate-800">\${{ glosa.valorFacturadoItemCop | number:'1.0-0' }}</span>
+                  </div>
+                  <div class="bg-white p-2 rounded-lg border border-slate-200 text-center">
+                    <span class="text-[9px] text-slate-400 block font-sans font-semibold uppercase">Tarifa Pactada</span>
+                    <span class="font-bold text-[var(--color-brand)]">\${{ glosa.valorTarifaPactadaItemCop | number:'1.0-0' }}</span>
+                  </div>
+                  <div class="bg-white p-2 rounded-lg border border-slate-200 text-center">
+                    <span class="text-[9px] text-slate-400 block font-sans font-semibold uppercase">Glosa Sugerida IA</span>
+                    <span class="font-bold text-red-600">\${{ glosa.valorGlosaSugeridaIaCop | number:'1.0-0' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BLOQUE 2: SOLUCIÓN SUGERIDA POR IA (COPILOT CARD) -->
+              <div class="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 border border-indigo-200 rounded-xl p-3.5 space-y-3 shadow-sm">
+                
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold text-white shadow-sm flex items-center gap-1.5"
+                          [ngClass]="glosa.veredictoIa === 'RATIFICAR_TOTAL' ? 'bg-red-600' : 'bg-emerald-600'">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                      <span>{{ glosa.veredictoIa === 'RATIFICAR_TOTAL' ? 'Ratificar Glosa Total' : glosa.veredictoIa === 'LEVANTAR_PARCIAL' ? 'Levantar Glosa Parcialmente' : 'Levantar Glosa Total' }}</span>
+                    </span>
+
+                    <span class="text-xs font-mono font-semibold text-indigo-700 bg-white/80 px-2 py-0.5 rounded border border-indigo-200">
+                      {{ glosa.confianzaIaPorcentaje }}% confianza RAG
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Explicación de la IA -->
+                <p class="text-xs text-slate-800 leading-relaxed">
+                  {{ glosa.solucionSugeridaIa }}
+                </p>
+
+                <!-- CITAS CLICABLES A LOS SOPORTES DOCUMENTALES (DEEP-LINK A PÁGINA) -->
+                <div *ngIf="glosa.citasSoporte.length > 0" class="pt-2 border-t border-indigo-100/80">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-900 block mb-1.5 flex items-center gap-1">
+                    <svg class="w-3 h-3 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                    <span>Evidencia Extraída de Soportes (Clic para saltar a pág.):</span>
+                  </span>
+                  <div class="flex flex-wrap gap-1.5">
+                    <button 
+                      *ngFor="let cita of glosa.citasSoporte"
+                      (click)="enfocarCita(cita)"
+                      class="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-600 hover:text-white border border-indigo-300 text-indigo-800 text-xs font-medium flex items-center gap-1.5 shadow-sm transition active:scale-95 group"
+                      title="Saltar inmediatamente al documento y resaltar el extracto probatorio"
+                    >
+                      <span>📄 {{ cita.etiqueta }}</span>
+                      <span class="text-[10px] opacity-75 group-hover:text-white font-mono">→</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Sustento Legal y Fuentes -->
+                <div class="pt-2 border-t border-indigo-100/80 text-[11px] text-slate-600">
+                  <span class="font-bold text-slate-800">Sustento Normativo:</span>
+                  <p class="mt-0.5 text-slate-700 font-mono">{{ glosa.sustentoNormativo }}</p>
+                  <div class="flex flex-wrap gap-1 mt-1.5">
+                    <span *ngFor="let f of glosa.fuentesCite" class="px-2 py-0.5 rounded bg-white text-indigo-900 text-[10px] font-mono border border-indigo-200">
+                      📜 {{ f }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Borrador Oficial para Notificación -->
+                <div class="pt-2 border-t border-indigo-100/80">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Borrador Oficial para Notificación IPS:</span>
+                  <div class="bg-white p-2.5 rounded-lg border border-indigo-200 text-xs text-slate-700 font-mono leading-relaxed">
+                    "{{ glosa.borradorRespuestaIa }}"
+                  </div>
+                </div>
+              </div>
+
+              <!-- TRAZA DE DECISIÓN REGISTRADA (SI YA SE AUDITÓ) -->
+              <div *ngIf="glosa.decisionAplicada" class="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 space-y-1.5">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-emerald-800 flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Decisión Registrada: {{ glosa.decisionAplicada.etiqueta }}</span>
+                  </span>
+                  <span class="font-mono text-[10px] text-slate-500">{{ glosa.decisionAplicada.timestamp | date:'HH:mm:ss' }}</span>
+                </div>
+                <div class="text-[11px] text-emerald-950 font-mono">
+                  <span>Glosa Definitiva: <strong>\${{ glosa.decisionAplicada.valorFinalGlosaCop | number:'1.0-0' }} COP</strong> · Auditor: {{ glosa.decisionAplicada.auditor }}</span>
+                  <p class="text-slate-600 font-sans mt-1 italic">"{{ glosa.decisionAplicada.argumentoFinal }}"</p>
+                </div>
+              </div>
+
+            </ng-container>
+          </div>
+
+          <!-- =================================================================== -->
+          <!-- BLOQUE 3: ACCIONES EJECUTABLES (STICKY ACTION DOCK INFERIOR) -->
+          <!-- =================================================================== -->
+          <div class="p-4 bg-white border-t border-slate-200 shrink-0 sticky bottom-0 z-10 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+            <ng-container *ngIf="glosaActiva() as glosa">
+              
+              <!-- MODO ACCIONES RÁPIDAS (1 CLIC / AJUSTAR / MANTENER / ESCALAR) -->
+              <div *ngIf="!modoEdicionInline()" class="space-y-2">
+                <!-- Botón Primario: Aplicar Sugerencia IA -->
+                <button 
+                  (click)="aplicarSugerenciaIa(glosa)"
+                  class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition active:scale-98"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                  <span>✓ Aplicar Sugerencia IA y Siguiente (⏎)</span>
+                </button>
+
+                <!-- Acciones Secundarias en Grid -->
+                <div class="grid grid-cols-3 gap-2">
+                  <button 
+                    (click)="activarEdicionInline(glosa)"
+                    class="py-2 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-semibold flex items-center justify-center gap-1 transition"
+                    title="Ajustar monto o texto de justificación clínica (E)"
+                  >
+                    <span>✎ Ajustar (E)</span>
+                  </button>
+
+                  <button 
+                    (click)="mantenerGlosaTotal(glosa)"
+                    class="py-2 px-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold flex items-center justify-center gap-1 transition"
+                    title="Mantener y ratificar glosa al 100% sin levantar"
+                  >
+                    <span>✕ Mantener 100%</span>
+                  </button>
+
+                  <button 
+                    (click)="escalarGlosa(glosa)"
+                    class="py-2 px-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold flex items-center justify-center gap-1 transition"
+                    title="Escalar a médico especialista auditor"
+                  >
+                    <span>⚑ Escalar</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- MODO EDICIÓN INLINE CON BLINDAJE FORENSE ≥ 50 CARACTERES -->
+              <div *ngIf="modoEdicionInline()" class="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-300 animate-slide-up">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-slate-800 uppercase tracking-wide">Ajuste Manual Forense de Glosa</span>
+                  <button (click)="cancelarEdicionInline()" class="text-slate-500 hover:text-slate-800 text-xs font-semibold">✕ Cancelar</button>
+                </div>
+
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-600 mb-1">Monto Definitivo de Glosa (COP):</label>
+                  <input 
+                    type="number" 
+                    [(ngModel)]="montoAjustadoInput" 
+                    class="w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="block text-[11px] font-semibold text-slate-600">Motivación Clínica Obligatoria:</label>
+                    <span class="text-[10px] font-mono font-bold" [class]="justificacionAjusteInput().length >= 50 ? 'text-emerald-600' : 'text-amber-600 animate-pulse'">
+                      {{ justificacionAjusteInput().length }}/50 car. mín.
+                    </span>
+                  </div>
+                  <textarea 
+                    [(ngModel)]="justificacionAjusteInput" 
+                    rows="3" 
+                    placeholder="Explique el fundamento médico o contractual para apartarse de la recomendación de la IA (mínimo 50 caracteres)..."
+                    class="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 placeholder:text-slate-400"
+                  ></textarea>
+                </div>
+
+                <button 
+                  (click)="guardarEdicionInline(glosa)"
+                  [disabled]="justificacionAjusteInput().length < 50"
+                  [class]="justificacionAjusteInput().length >= 50
+                    ? 'w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition'
+                    : 'w-full py-2.5 rounded-lg bg-slate-200 text-slate-400 font-bold text-xs cursor-not-allowed'"
+                >
+                  Confirmar Decisión Ajustada
+                </button>
+              </div>
+
+            </ng-container>
+          </div>
+        </section>
+
+        <!-- =================================================================== -->
+        <!-- PANEL 3: EVIDENCE DOCK (VISOR DE ARCHIVOS Y EVIDENCIA OCR - 36%) -->
+        <!-- =================================================================== -->
+        <section 
+          class="bg-slate-100 flex flex-col overflow-hidden min-h-0 transition-all duration-200"
+          [style.width.%]="anchoPanelEvidencia()"
+        >
+          <!-- Barra de Pestañas y Controles del Visor -->
+          <div class="h-11 bg-white border-b border-slate-200 px-3 flex items-center justify-between shrink-0">
+            
+            <!-- Pestañas de Documentos Agrupadas -->
+            <div class="flex items-center space-x-1 overflow-x-auto min-w-0 max-w-[min(100%,36rem)] pr-2">
+              <span class="text-[10px] font-bold uppercase text-slate-400 mr-1 hidden xl:inline">Soportes:</span>
+              
               <button 
                 *ngFor="let doc of casoActivo().soportesDocumentales"
                 (click)="seleccionarDocumento(doc.id)"
-                [class]="doc.id === documentoActivoId() 
-                  ? 'px-3 py-1.5 rounded-t-lg bg-slate-50 text-[var(--color-brand)] border-t-2 border-[var(--color-brand)] text-xs font-semibold flex items-center gap-1.5 shrink-0'
-                  : 'px-3 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-medium flex items-center gap-1.5 shrink-0'"
+                [class]="doc.id === documentoActivoId()
+                  ? 'px-2.5 py-1.5 rounded-t-lg bg-slate-100 text-[var(--color-brand)] border-t-2 border-[var(--color-brand)] text-xs font-bold flex items-center gap-1.5 shrink-0'
+                  : 'px-2.5 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-medium flex items-center gap-1.5 shrink-0'"
+                [title]="doc.nombreArchivo"
               >
                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V7.5L14.5 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                <span class="truncate max-w-[88px]">{{ doc.nombreArchivo }}</span>
+                <span class="truncate max-w-[90px]">{{ doc.nombreArchivo }}</span>
+                <span *ngIf="esSoporteRelevante(doc.id)" class="w-1.5 h-1.5 rounded-full bg-indigo-600" title="Relevante para glosa activa"></span>
               </button>
             </div>
 
-            <!-- Controles del Visor OCR (Zoom, Bounding Box Toggle) -->
-            <div class="flex items-center space-x-2 shrink-0">
+            <!-- Controles: Paginador + Toggle OCR + Zoom + Expandir -->
+            <div class="flex items-center space-x-1.5 shrink-0">
+              
+              <!-- Paginador Documental -->
+              <div class="flex items-center bg-slate-100 rounded px-1.5 py-0.5 text-xs text-slate-700 font-mono border border-slate-200">
+                <button (click)="cambiarPagina(-1)" [disabled]="paginaActivaVisor() <= 1" class="px-1 disabled:opacity-30 hover:text-indigo-600 font-bold">‹</button>
+                <span class="px-1 text-[11px]">{{ paginaActivaVisor() }}/{{ documentoActivo()?.totalPaginas || 1 }}</span>
+                <button (click)="cambiarPagina(1)" [disabled]="paginaActivaVisor() >= (documentoActivo()?.totalPaginas || 1)" class="px-1 disabled:opacity-30 hover:text-indigo-600 font-bold">›</button>
+              </div>
+
+              <!-- Toggle Bounding Box OCR -->
               <button 
                 (click)="toggleBoundingBoxes()"
                 [class]="mostrarBoundingBoxes() 
-                  ? 'px-2 py-0.5 rounded text-[11px] bg-red-950 text-red-300 border border-red-800 font-semibold flex items-center gap-1'
-                  : 'px-2 py-0.5 rounded text-[11px] bg-slate-100 text-slate-600 hover:text-slate-800 border border-slate-300'"
+                  ? 'px-2 py-0.5 rounded text-[10px] bg-red-950 text-red-300 border border-red-800 font-semibold flex items-center gap-1'
+                  : 'px-2 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 hover:text-slate-800 border border-slate-300'"
+                title="Mostrar/ocultar cajas delimitadoras de OCR"
               >
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" *ngIf="mostrarBoundingBoxes()"></span>
-                <span>Bounding Box OCR (F03)</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-red-500" *ngIf="mostrarBoundingBoxes()"></span>
+                <span>OCR</span>
               </button>
 
-              <div class="flex items-center bg-slate-100 rounded px-1.5 py-0.5 text-xs text-slate-700 font-mono border border-slate-200">
+              <!-- Zoom -->
+              <div class="flex items-center bg-slate-100 rounded px-1 py-0.5 text-xs text-slate-700 font-mono border border-slate-200">
                 <button (click)="cambiarZoom(-10)" class="px-1 hover:text-[var(--color-brand)] font-bold">-</button>
-                <span class="px-1.5 text-[11px] text-[var(--color-brand)]">{{ zoomNivel() }}%</span>
+                <span class="px-1 text-[10px] text-[var(--color-brand)]">{{ zoomNivel() }}%</span>
                 <button (click)="cambiarZoom(10)" class="px-1 hover:text-[var(--color-brand)] font-bold">+</button>
               </div>
+
+              <!-- Botón Expandir / Colapsar Visor -->
+              <button 
+                (click)="toggleExpandirVisor()"
+                class="p-1 rounded bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-xs"
+                [title]="visorExpandido() ? 'Restaurar ancho normal (])' : 'Expandir visor documental ([)'"
+              >
+                <svg *ngIf="!visorExpandido()" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                <svg *ngIf="visorExpandido()" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
             </div>
           </div>
 
-          <!-- Área de Renderizado de Soporte Digital (Canvas Simulado) -->
+          <!-- ÁREA DE RENDERIZADO DEL SOPORTE DIGITAL CON ZOOM Y BOUNDING BOXES -->
           <div class="flex-1 bg-slate-200 overflow-auto p-4 flex justify-center relative select-text" id="viewer-container">
             
             <div 
-              class="bg-white text-slate-900 rounded shadow-2xl relative transition-transform origin-top duration-150 border border-slate-300"
-              [style.width.px]="620"
-              [style.minHeight.px]="820"
+              class="bg-white text-slate-900 rounded-lg shadow-2xl relative transition-transform origin-top duration-150 border border-slate-300"
+              [style.width.px]="600"
+              [style.minHeight.px]="800"
               [style.transform]="'scale(' + (zoomNivel() / 100) + ')'"
             >
-              <!-- Membrete Simulado de Soporte Clínico -->
-              <div class="p-6 border-b border-slate-200 bg-slate-50 flex justify-between items-start">
+              <!-- Membrete Oficial del Prestador -->
+              <div class="p-5 border-b border-slate-200 bg-slate-50/80 flex justify-between items-start">
                 <div>
-                  <h3 class="font-bold text-slate-900 text-sm uppercase tracking-wide">{{ casoActivo().prestador.nombre }}</h3>
-                  <p class="text-[11px] text-slate-600 font-mono">NIT: {{ casoActivo().prestador.nit }} · Cod. Habilitación: {{ casoActivo().prestador.codigoHabilitation }}</p>
-                  <p class="text-[11px] text-slate-600 font-mono">{{ casoActivo().prestador.sede }}</p>
+                  <h3 class="font-bold text-slate-900 text-xs uppercase tracking-wide">{{ casoActivo().prestador.nombre }}</h3>
+                  <p class="text-[10px] text-slate-600 font-mono">NIT: {{ casoActivo().prestador.nit }} · Cód. Habilitación: {{ casoActivo().prestador.codigoHabilitation }}</p>
+                  <p class="text-[10px] text-slate-600 font-mono">{{ casoActivo().prestador.sede }}</p>
                 </div>
                 <div class="text-right">
-                  <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 text-[10px] font-mono font-bold uppercase">{{ documentoActivo()?.tipoDocumento }}</span>
-                  <p class="text-[10px] text-slate-500 mt-1 font-mono">Folio: 003-2026</p>
+                  <span class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 text-[9px] font-mono font-bold uppercase">{{ documentoActivo()?.tipoDocumento }}</span>
+                  <p class="text-[10px] text-slate-500 mt-1 font-mono">Página {{ paginaActivaVisor() }} de {{ documentoActivo()?.totalPaginas || 1 }}</p>
                 </div>
               </div>
 
-              <!-- Contenido de Texto Clínico Digitalizado (OCR Base) -->
-              <div class="p-6 space-y-4 text-xs font-serif leading-relaxed text-slate-800">
-                <div class="border-b border-slate-200 pb-2 flex justify-between">
-                  <div><strong>Paciente:</strong> {{ casoActivo().paciente.nombreCompleto }}</div>
-                  <div><strong>Doc:</strong> {{ casoActivo().paciente.tipoDocumento }} {{ casoActivo().paciente.numeroDocumento }}</div>
-                  <div><strong>Edad:</strong> {{ casoActivo().paciente.edad }} años</div>
-                </div>
+              <!-- Datos de Identificación del Paciente -->
+              <div class="px-5 py-2.5 bg-slate-100/60 border-b border-slate-200 flex justify-between text-[11px] font-mono">
+                <div><strong>Paciente:</strong> {{ casoActivo().paciente.nombreCompleto }}</div>
+                <div><strong>Doc:</strong> {{ casoActivo().paciente.tipoDocumento }} {{ casoActivo().paciente.numeroDocumento }}</div>
+                <div><strong>Edad:</strong> {{ casoActivo().paciente.edad }} años</div>
+              </div>
 
+              <!-- BANNER DE CITA RESALTADA ACTIVA (SALTO DESDE IA) -->
+              <div *ngIf="citaResaltadaTexto()" class="m-4 p-2.5 rounded-lg bg-amber-100/90 border border-amber-300 text-amber-950 text-xs font-sans shadow-sm flex items-start justify-between gap-2">
+                <div>
+                  <span class="font-bold text-[10px] uppercase text-amber-800 flex items-center gap-1">
+                    <span>🎯</span>
+                    <span>Evidencia Citada por la IA:</span>
+                  </span>
+                  <p class="font-mono text-[11px] mt-0.5 font-semibold">"{{ citaResaltadaTexto() }}"</p>
+                </div>
+                <button (click)="citaResaltadaTexto.set('')" class="text-amber-700 hover:text-amber-900 text-xs font-bold">✕</button>
+              </div>
+
+              <!-- Contenido Clínico Digitalizado (Simulación según página y documento) -->
+              <div class="p-6 space-y-4 text-xs font-serif leading-relaxed text-slate-800">
+                
                 <div class="bg-amber-50/50 p-2.5 rounded border border-amber-200 text-[11px] font-sans">
                   <span class="font-bold text-amber-900">Diagnóstico Principal:</span>
                   <span class="font-mono font-bold text-amber-900 ml-1">[{{ casoActivo().diagnosticoPrincipal.codigoCie10 }}]</span>
                   <span class="text-amber-800 ml-1">{{ casoActivo().diagnosticoPrincipal.descripcion }}</span>
                 </div>
 
-                <!-- Detalle Clínico según el caso -->
-                <div [ngSwitch]="casoActivo().id" class="space-y-3 font-mono text-[11px]">
-                  <!-- ESC-01 -->
-                  <div *ngSwitchCase="'ESC-01'" class="space-y-2">
-                    <p class="font-bold text-slate-900">RESUMEN DE ATENCIÓN QUIRÚRGICA:</p>
-                    <p>Paciente ingresa para colecistectomía laparoscópica programada. Sin complicaciones intraoperatorias. Procedimiento concluido satisfactoriamente con tiempos quirúrgicos estándar.</p>
-                    <p class="text-slate-600">CUPS 471110 - Colecistectomía laparoscópica. Tarifa pactada en contrato SOAT 2026 + 5%.</p>
-                  </div>
-
-                  <!-- ESC-02 -->
-                  <div *ngSwitchCase="'ESC-02'" class="space-y-2">
-                    <p class="font-bold text-slate-900">RESUMEN ATENCIÓN URGENCIAS Y LIQUIDACIÓN TARIFARIA:</p>
-                    <p>Ingreso por urgencias con dolor abdominal agudo en fosa ilíaca derecha. Valoración por medicina general e interconsulta quirúrgica.</p>
-                    <p class="bg-red-50 p-2 border border-red-200 rounded text-red-950 font-bold">
-                      ORDEN #9941: CUPS 890201 Consulta Medicina General Urgencias. Valor liquidado en factura: $85.000 COP.
-                    </p>
-                    <p class="text-slate-600">Nota de auditoría: Contrato CTR-2026-SOS-SANVICENTE establece tarifa base de $65.000 COP para consulta de urgencias primer nivel.</p>
-                  </div>
-
-                  <!-- ESC-03 -->
-                  <div *ngSwitchCase="'ESC-03'" class="space-y-2">
-                    <p class="font-bold text-slate-900">INFORME DE ATENCIÓN POR TRAUMA Y PÓLIZA:</p>
-                    <p>Paciente ingresa tras accidente de tránsito en calidad de acompañante de motocicleta.</p>
-                    <p class="bg-amber-50 p-2 border border-amber-200 rounded text-amber-950 font-bold">
-                      Se realizan exámenes de perfil de trauma ($280.000 COP). Atención marcada con afectación SOAT/ECAT. No consta formulario FURIPS diligenciado en el paquete digital radicado.
-                    </p>
-                  </div>
-
-                  <!-- ESC-04: CUV AUSENTE -->
-                  <div *ngSwitchCase="'ESC-04'" class="space-y-2">
-                    <div class="bg-red-100 p-3 border-2 border-red-500 rounded text-red-900 font-sans">
-                      <p class="font-bold text-sm uppercase">⛔ EXPEDIENTE ELECTRÓNICO RECHAZADO EN VENTANILLA DE ENTRADA</p>
-                      <p class="text-xs mt-1">El documento FEV-771920 carece del Código Único de Validación (CUV) obligatorio ante el Mecanismo Único de MinSalud.</p>
-                      <p class="text-[11px] font-mono mt-2 bg-white/70 p-1.5 rounded">Res. 0948 de 2026 Art. 3.1: "Las entidades no generarán radicación ni correrán términos sin el CUV previo y validado."</p>
+                <!-- Detalle Específico del Folio según el Caso y la Página -->
+                <div class="space-y-3 font-mono text-[11px]">
+                  
+                  <!-- ESC-02 PÁGINA 3 (HOJA QUIRÚRGICA) -->
+                  <div *ngIf="casoActivo().id === 'ESC-02' && documentoActivoId() === 'DOC-HOSP-HQ' && paginaActivaVisor() === 3" class="space-y-2">
+                    <p class="font-bold text-slate-900">FOLIO QUIRÚRGICO Y ORDEN DE LIQUIDACIÓN DE URGENCIAS:</p>
+                    <p>Paciente ingresa por dolor abdominal agudo en fosa ilíaca derecha. Valoración inicial por medicina de urgencias.</p>
+                    <div class="bg-red-50 p-3 border border-red-300 rounded text-red-950 font-bold">
+                      ORDEN #9941: CUPS 890201 Consulta Medicina General Urgencias. Valor liquidado en orden: \$85.000 COP.
                     </div>
+                    <p class="text-slate-600">Nota de auditoría: Acuerdo de voluntades CTR-2026-SOS-SANVICENTE establece tarifa base de \$65.000 COP.</p>
                   </div>
 
-                  <!-- ESC-05: DEVOLUCIÓN 5-5-5 -->
-                  <div *ngSwitchCase="'ESC-05'" class="space-y-2">
-                    <p class="font-bold text-slate-900">AUDITORÍA CONTRACTUAL Y HABILITACIÓN DE RED:</p>
-                    <p>Facturación de consulta y terapias ambulatorias por dolor lumbar.</p>
-                    <p class="bg-amber-100 p-2 border border-amber-300 rounded text-amber-950 font-bold">
-                      HALLAZGO: Contrato relacionado CTR-2025-099 finalizó su vigencia el 31-DIC-2025. Causal DE4401 taxativa.
-                    </p>
-                    <p class="text-slate-600">Resolución 2284 Art. 6: Se formula devolución antes de preclusión en día 5 hábil.</p>
-                  </div>
-
-                  <!-- ESC-06: ACEPTACIÓN TÁCITA LEY 1438 -->
-                  <div *ngSwitchCase="'ESC-06'" class="space-y-2">
-                    <div class="bg-emerald-50 p-3 border-2 border-emerald-500 rounded text-emerald-950 font-sans">
-                      <p class="font-bold text-sm uppercase">📜 FACTURA ACEPTADA TÁCITAMENTE - TÍTULO VALOR EJECUTIVO</p>
-                      <p class="text-xs mt-1">Han transcurrido 22 días hábiles posteriores a la radicación sin notificación de glosa objetada por la EPS.</p>
-                      <p class="text-[11px] font-mono mt-2 bg-emerald-100 p-1.5 rounded">Ley 1438/2011 Art. 57 & Dec. 441/2022: Plazo perimido de 20 días hábiles. Título Valor ejecutivo listo para cobro coactivo o giro directo.</p>
+                  <!-- ESC-02 PÁGINA 2 (LABORATORIO) -->
+                  <div *ngIf="casoActivo().id === 'ESC-02' && documentoActivoId() === 'DOC-HOSP-LAB' && paginaActivaVisor() === 2" class="space-y-2">
+                    <p class="font-bold text-slate-900">INFORME DE LABORATORIO CLÍNICO AUTOMATIZADO:</p>
+                    <div class="bg-amber-50 p-3 border border-amber-300 rounded text-amber-950 font-bold">
+                      Hemograma IV validado por bacteriólogo a las 15:20 hrs. Valores dentro de rango estándar.
                     </div>
+                    <p>Leucocitos: 11.200 /mm³ | Neutrófilos: 74% | Plaquetas: 240.000 /mm³ | Hb: 14.2 g/dL.</p>
+                  </div>
+
+                  <!-- ESC-02 PÁGINA 4 (EPICRISIS / OXIGENOTERAPIA) -->
+                  <div *ngIf="casoActivo().id === 'ESC-02' && documentoActivoId() === 'DOC-HOSP-EPI' && paginaActivaVisor() === 4" class="space-y-2">
+                    <p class="font-bold text-slate-900">EVOLUCIÓN CLÍNICA Y REGISTRO DE ENFERMERÍA:</p>
+                    <div class="bg-blue-50 p-3 border border-blue-300 rounded text-blue-950 font-bold">
+                      ...se administra O2 continuo por cánula nasal durante 4 hrs (14:30 - 18:30). Paciente satura 96% al aire ambiente...
+                    </div>
+                    <p>18:35 - Se retira soporte de oxígeno tras estabilidad gasométrica y franca mejoría ventilatoria.</p>
+                  </div>
+
+                  <!-- ESC-03 PÁGINA 1 (EPICRISIS SOAT / FURIPS FALTANTE) -->
+                  <div *ngIf="casoActivo().id === 'ESC-03' && paginaActivaVisor() === 1" class="space-y-2">
+                    <p class="font-bold text-slate-900">INFORME DE ATENCIÓN DE URGENCIA POR ACCIDENTE DE TRÁNSITO:</p>
+                    <div class="bg-amber-50 p-3 border border-amber-300 rounded text-amber-950 font-bold">
+                      Ingreso por Urgencias derivado de Accidente de Tránsito (Atención SOAT). No consta radicado FURIPS.
+                    </div>
+                    <p>Vehículo involucrado: Motocicleta placa XYZ-12D. Póliza SOAT #9948210 Aseguradora Solidaria.</p>
+                  </div>
+
+                  <!-- ESC-03 PÁGINA 2 (AUTORIZACIÓN UBICADA) -->
+                  <div *ngIf="casoActivo().id === 'ESC-03' && paginaActivaVisor() === 2" class="space-y-2">
+                    <p class="font-bold text-slate-900">ANEXO DE AUTORIZACIONES Y VALIDACIONES EPS:</p>
+                    <div class="bg-emerald-50 p-3 border border-emerald-300 rounded text-emerald-950 font-bold">
+                      Autorización telefónica EPS: AUT-2026-99201 para valoración por traumatología y ortopedia.
+                    </div>
+                    <p>Fecha de emisión: 18-OCT-2026 20:15 hrs. Vigencia: 48 horas intrahospitalarias.</p>
+                  </div>
+
+                  <!-- CONTENIDO POR DEFECTO PARA OTROS CASOS O PÁGINAS -->
+                  <div *ngIf="!((casoActivo().id === 'ESC-02' && (paginaActivaVisor() === 3 || paginaActivaVisor() === 2 || paginaActivaVisor() === 4)) || casoActivo().id === 'ESC-03')" class="space-y-2">
+                    <p class="font-bold text-slate-900">RESUMEN DEL SOPORTE DIGITAL RADICADO:</p>
+                    <p>{{ casoActivo().explicacionIaRag.resumenEjecutivo }}</p>
+                    <p class="text-slate-600">Soporte verificado mediante OCR e indexado en el motor RAG de auditoría médica.</p>
                   </div>
                 </div>
 
+                <!-- Pie de Firma del Médico Tratante -->
                 <div class="pt-8 border-t border-slate-200 flex justify-between items-end text-[10px] text-slate-500 font-sans">
                   <div>
                     <p class="font-bold text-slate-700">Dr. Roberto Gómez Henao</p>
-                    <p>Médico Cirujano Audit-AI · RM-10928-ANT</p>
+                    <p>Médico Cirujano · RM-10928-ANT</p>
                   </div>
-                  <div>Página 1 de 1</div>
+                  <div>Página {{ paginaActivaVisor() }} de {{ documentoActivo()?.totalPaginas || 1 }}</div>
                 </div>
               </div>
 
-              <!-- LAYER DE BOUNDING BOXES (RESALTADO FLOTANTE F03) -->
+              <!-- LAYER DE BOUNDING BOXES OCR INTERACTIVOS (F03) -->
               <ng-container *ngIf="mostrarBoundingBoxes()">
                 <div 
                   *ngFor="let bb of boundingBoxesDocumentoActivo()"
@@ -405,16 +978,15 @@ export interface CasoAuditoria {
                   [style.borderColor]="bb.colorBorde"
                   [style.backgroundColor]="bb.colorBorde + '15'"
                 >
-                  <!-- Badge Flotante del Bounding Box -->
+                  <!-- Badge del Bounding Box -->
                   <div 
                     class="absolute -top-6 left-0 px-2 py-0.5 rounded text-[10px] font-sans font-bold text-white shadow flex items-center gap-1 shrink-0 whitespace-nowrap"
                     [style.backgroundColor]="bb.colorBorde"
                   >
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                     <span>{{ bb.etiquetaCampo }}</span>
                   </div>
 
-                  <!-- Tooltip de Evidencia OCR al hacer hover -->
+                  <!-- Tooltip de Evidencia OCR -->
                   <div class="hidden group-hover:block absolute top-full left-0 mt-1 w-72 bg-slate-900 text-slate-100 p-2.5 rounded-lg shadow-2xl border border-slate-700 text-[11px] font-sans z-30 leading-tight">
                     <p class="font-bold text-amber-400 mb-1">{{ bb.mensajeHallazgo }}</p>
                     <p class="text-slate-300 font-mono text-[10px] bg-slate-950 p-1 rounded border border-slate-800">"{{ bb.textoExtraidoOcr }}"</p>
@@ -426,379 +998,31 @@ export interface CasoAuditoria {
           </div>
         </section>
 
-        <!-- =================================================================== -->
-        <!-- PANEL DERECHO: COMPARADOR FINANCIERO E IA / HUMAN-IN-THE-LOOP (50%) -->
-        <!-- =================================================================== -->
-        <section class="w-1/2 bg-white flex flex-col overflow-hidden min-h-0">
-          <div class="flex-1 min-h-0 overflow-y-auto">
-          <!-- FICHA DEL PACIENTE Y RESUMEN FINANCIERO -->
-          <div class="p-4 bg-white border-b border-slate-200 space-y-3">
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <span>{{ casoActivo().paciente.nombreCompleto }}</span>
-                  <span class="text-xs font-mono font-normal text-slate-500">({{ casoActivo().paciente.tipoDocumento }} {{ casoActivo().paciente.numeroDocumento }})</span>
-                </h2>
-                <p class="text-xs text-slate-500 font-sans">
-                  <span>{{ casoActivo().paciente.planAfiliacion }}</span>
-                  <span class="mx-1.5">•</span>
-                  <span>Dx: <strong class="text-slate-800">{{ casoActivo().diagnosticoPrincipal.codigoCie10 }} - {{ casoActivo().diagnosticoPrincipal.descripcion }}</strong></span>
-                </p>
-              </div>
-
-              <!-- Badge de Estado de Auditoría -->
-              <div [ngSwitch]="casoActivo().estadoAuditoria">
-                <span *ngSwitchCase="'PENDIENTE'" class="px-3 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-xs font-bold font-mono">
-                  PENDIENTE DE REVISIÓN
-                </span>
-                <span *ngSwitchCase="'GLOSADA_NOTIFICADA'" class="px-3 py-1 rounded-full bg-red-950 text-red-300 border border-red-800 text-xs font-bold font-mono">
-                  GLOSA NOTIFICADA (RM)
-                </span>
-                <span *ngSwitchCase="'APROBADA_NOTIFICADA'" class="px-3 py-1 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 text-xs font-bold font-mono">
-                  APROBADA DIRECTA
-                </span>
-                <span *ngSwitchCase="'SOBREESCRITO_FORENSE'" class="px-3 py-1 rounded-full bg-purple-950 text-purple-300 border border-purple-800 text-xs font-bold font-mono">
-                  SOBREESCRITO FORENSE
-                </span>
-                <span *ngSwitchCase="'RECHAZO_SIN_NUR'" class="px-3 py-1 rounded-full bg-red-900 text-white border border-red-600 text-xs font-bold font-mono shadow-lg shadow-red-900/50">
-                  RECHAZO SIN NUR (RES. 0948)
-                </span>
-                <span *ngSwitchCase="'DEVOLUCION_FORMULADA'" class="px-3 py-1 rounded-full bg-orange-950 text-orange-300 border border-orange-800 text-xs font-bold font-mono">
-                  DEVOLUCIÓN FORMULADA (5 DÍAS)
-                </span>
-                <span *ngSwitchCase="'DEVOLUCION_PRECLUIDA'" class="px-3 py-1 rounded-full bg-red-950 text-red-400 border border-red-800 text-xs font-bold font-mono">
-                  DEVOLUCIÓN PRECLUIDA (DÍA 6)
-                </span>
-                <span *ngSwitchCase="'DEVOLUCION_CONTROVERTIDA'" class="px-3 py-1 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 text-xs font-bold font-mono">
-                  CONTROVERSIA IPS (RE9601)
-                </span>
-                <span *ngSwitchCase="'FACTURA_ACEPTADA_TACITA'" class="px-3 py-1 rounded-full bg-yellow-950 text-yellow-300 border border-yellow-600 text-xs font-bold font-mono shadow-md">
-                  ★ ACEPTACIÓN TÁCITA (LEY 1438)
-                </span>
-              </div>
-            </div>
-
-            <!-- Grilla KPI Financiera 4 Tarjetas -->
-            <div class="grid grid-cols-4 gap-2 pt-1">
-              <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-                <p class="text-[10px] text-slate-500 font-semibold uppercase">Facturado COP</p>
-                <p class="text-sm font-bold text-slate-900 font-mono mt-0.5"><span>$</span>{{ casoActivo().resumenFinanciero.valorFacturadoCop | number:'1.0-0' }}</p>
-              </div>
-
-              <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-                <p class="text-[10px] text-slate-500 font-semibold uppercase">Tarifa Base Pactada</p>
-                <p class="text-sm font-bold text-[var(--color-brand)] font-mono mt-0.5"><span>$</span>{{ casoActivo().resumenFinanciero.valorTarifaPactadaCop | number:'1.0-0' }}</p>
-              </div>
-
-              <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-                <p class="text-[10px] text-slate-500 font-semibold uppercase">Glosa Sugerida IA</p>
-                <p class="text-sm font-bold text-red-600 font-mono mt-0.5"><span>$</span>{{ casoActivo().resumenFinanciero.valorGlosaSugeridaCop | number:'1.0-0' }}</p>
-              </div>
-
-              <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center">
-                <p class="text-[10px] text-slate-500 font-semibold uppercase">Aprobado Sugerido</p>
-                <p class="text-sm font-bold text-emerald-700 font-mono mt-0.5"><span>$</span>{{ casoActivo().resumenFinanciero.valorAprobadoSugeridoCop | number:'1.0-0' }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- TABLA COMPARATIVA DE ÍTEMS CUPS FACTURADOS VS TARIFARIO -->
-          <div class="p-4 border-b border-slate-200 space-y-2">
-            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-              <span>Desglose por Línea de Servicio (F04)</span>
-              <span class="text-[11px] text-slate-500 font-mono font-normal">{{ casoActivo().itemsFacturados.length }} Ítems evaluados</span>
-            </h3>
-
-            <div class="overflow-x-auto rounded-lg border border-slate-200">
-              <table class="w-full text-left text-xs font-sans">
-                <thead class="bg-slate-50 text-slate-500 font-mono uppercase text-[10px]">
-                  <tr>
-                    <th class="p-2">Lín</th>
-                    <th class="p-2">CUPS</th>
-                    <th class="p-2">Descripción</th>
-                    <th class="p-2 text-right">Facturado</th>
-                    <th class="p-2 text-right">Pactado</th>
-                    <th class="p-2 text-right">Glosa Sug.</th>
-                    <th class="p-2 text-center">Estado</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 bg-white font-mono">
-                  <tr *ngFor="let item of casoActivo().itemsFacturados" [class]="item.estadoItem === 'GLOSADO_SUGERIDO' ? 'bg-red-50' : ''">
-                    <td class="p-2 text-slate-500">{{ item.linea }}</td>
-                    <td class="p-2 font-bold text-[var(--color-brand)]">{{ item.codigoCups }}</td>
-                    <td class="p-2 text-slate-700 font-sans text-[11px] max-w-[180px] truncate" [title]="item.descripcionCups">{{ item.descripcionCups }}</td>
-                    <td class="p-2 text-right text-slate-900"><span>$</span>{{ item.valorFacturadoCop | number:'1.0-0' }}</td>
-                    <td class="p-2 text-right text-slate-500"><span>$</span>{{ item.valorTarifaPactadaCop | number:'1.0-0' }}</td>
-                    <td class="p-2 text-right font-bold text-red-400"><span>$</span>{{ item.valorGlosaSugeridaCop | number:'1.0-0' }}</td>
-                    <td class="p-2 text-center">
-                      <span *ngIf="item.estadoItem === 'CONFORME'" class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold">OK</span>
-                      <span *ngIf="item.estadoItem === 'GLOSADO_SUGERIDO'" class="px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800 text-[10px] font-bold animate-pulse">GLOSA</span>
-                    </td>
-                  </tr>
-                  <tr *ngIf="casoActivo().itemsFacturados.length === 0">
-                    <td colspan="7" class="p-4 text-center text-slate-500 text-xs">Sin líneas procesables en este estado.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- MOTOR COGNITIVO RAG Y HALLAZGO NORMATIVO -->
-          <div class="p-4 border-b border-slate-200 space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xs font-bold uppercase tracking-wider text-[var(--color-brand)] flex items-center gap-1.5">
-                <svg class="w-4 h-4 text-[var(--color-brand)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h-1a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-                <span>Explicabilidad Normativa RAG<span class="demo-us-label"> (US-14)</span></span>
-              </h3>
-
-              <div *ngIf="casoActivo().causalGlosa" class="px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-[11px] font-mono text-amber-800">
-                Causal: <strong class="text-slate-900">{{ casoActivo().causalGlosa?.codigoManualUnico }}</strong> (Res. 3047: {{ casoActivo().causalGlosa?.codigoRes3047 }})
-              </div>
-            </div>
-
-            <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2 text-xs font-sans">
-              <p class="text-slate-800 leading-relaxed font-medium">{{ casoActivo().explicacionIaRag.resumenEjecutivo }}</p>
-              
-              <div class="pt-2 border-t border-slate-200 text-[11px] text-slate-600">
-                <span class="font-bold text-[var(--color-brand)]">Sustento Legal:</span>
-                <p class="mt-0.5 text-slate-700 font-mono">{{ casoActivo().explicacionIaRag.sustentoNormativo }}</p>
-              </div>
-
-              <div class="flex flex-wrap gap-1.5 pt-1">
-                <span *ngFor="let cite of casoActivo().explicacionIaRag.fuentesCite" class="px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 text-[10px] font-mono border border-indigo-800/60">
-                  📜 {{ cite }}
-                </span>
-              </div>
-            </div>
-          </div>
-          </div>
-
-          <!-- =================================================================== -->
-          <!-- SECCIÓN HITL: CONTROL CONDICIONAL SEGÚN ESTADO NORMATIVO -->
-          <!-- =================================================================== -->
-          <div class="p-4 bg-white shrink-0 border-t-2 border-[var(--color-brand)] space-y-3 sticky bottom-0 z-30 shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
-            
-            <!-- CASO 1: RECHAZO SIN NUR (ESC-04 / RES. 0948 ART 3.1) -->
-            <div *ngIf="casoActivo().estadoAuditoria === 'RECHAZO_SIN_NUR'" class="bg-red-50 p-4 rounded-xl border border-red-200 space-y-3">
-              <div class="flex items-center gap-2 text-red-800 font-bold text-xs uppercase">
-                <svg class="w-5 h-5 text-red-400 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
-                <span>Acción Bloqueada: Paquete no radicado legalmente</span>
-              </div>
-              <p class="text-xs text-red-800">
-                La factura fue devuelta en ventanilla por carecer del Código Único de Validación (CUV). De acuerdo con la Resolución 0948 de 2026, no se genera radicado NUR ni inician los términos de glosa.
-              </p>
-              <button 
-                (click)="descargarConstanciaRechazo()"
-                class="w-full py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow flex items-center justify-center gap-2 transition"
-              >
-                <span>📄 Descargar Constancia de Rechazo Inmediato (PDF)</span>
-              </button>
-            </div>
-
-            <!-- CASO 2: CICLO DEVOLUCIÓN 5-5-5 (ESC-05 / RES. 2284 ART 6) -->
-            <div *ngIf="casoActivo().estadoAuditoria === 'DEVOLUCION_FORMULADA'" class="bg-orange-50 p-4 rounded-xl border border-orange-200 space-y-3">
-              <div class="flex items-center justify-between text-xs">
-                <span class="font-bold text-orange-300 uppercase">Ciclo de Devolución 5-5-5 en Curso:</span>
-                <span class="px-2 py-0.5 rounded bg-orange-900 text-orange-200 font-mono text-[11px]">2 días hábiles restantes</span>
-              </div>
-              <p class="text-xs text-slate-300">
-                La EPS formuló devolución bajo la causal taxativa <strong>DE4401</strong> (Contrato expirado). La IPS dispone de 5 días para aceptar o controvertir.
-              </p>
-              <div class="grid grid-cols-3 gap-2">
-                <button 
-                  (click)="simularRespuestaIps('RE9701')"
-                  class="py-2 px-2 rounded bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold"
-                  title="Aceptar causal con Nota Crédito y nuevo NUR"
-                >
-                  IPS RE9701 (Aceptar)
-                </button>
-                <button 
-                  (click)="simularRespuestaIps('RE9601')"
-                  class="py-2 px-2 rounded bg-indigo-700 hover:bg-indigo-600 text-white text-[11px] font-bold"
-                  title="Controvertir causal manteniendo mismo NUR"
-                >
-                  IPS RE9601 (Controvertir)
-                </button>
-                <button 
-                  (click)="simularPreclusionDevolucion()"
-                  class="py-2 px-2 rounded bg-red-800 hover:bg-red-700 text-white text-[11px] font-bold"
-                  title="Simular paso al Día 6 para precluir devolución"
-                >
-                  Simular Día 6 (Precluir)
-                </button>
-              </div>
-            </div>
-
-            <!-- CASO 2.1: DEVOLUCIÓN PRECLUIDA -->
-            <div *ngIf="casoActivo().estadoAuditoria === 'DEVOLUCION_PRECLUIDA'" class="bg-red-50 p-4 rounded-xl border border-red-200 space-y-2">
-              <span class="text-xs font-bold text-red-800 flex items-center gap-1.5">
-                ⛔ PRECLUSIÓN LEGAL DE LA DEVOLUCIÓN (DÍA 6 HÁBIL SUPERADO)
-              </span>
-              <p class="text-xs text-slate-700">
-                Vencido el término perentorio de 5 días hábiles (Res. 2284 art. 6), la EPS perdió la facultad de devolver la factura. La cuenta debe ser tramitada mediante auditoría ordinaria con glosas.
-              </p>
-            </div>
-
-            <!-- CASO 2.2: DEVOLUCIÓN CONTROVERTIDA -->
-            <div *ngIf="casoActivo().estadoAuditoria === 'DEVOLUCION_CONTROVERTIDA'" class="p-4 rounded-xl border space-y-2" style="background-color: color-mix(in srgb, var(--color-brand) 8%, white); border-color: color-mix(in srgb, var(--color-brand) 30%, white);">
-              <span class="text-xs font-bold text-[var(--color-brand)] flex items-center gap-1.5">
-                ⚖ CONTROVERSIA FORMULADA POR LA IPS (RE9601)
-              </span>
-              <p class="text-xs text-slate-300">
-                La IPS controvirtió la causal DE4401 en el término de 5 días hábiles sobre el mismo NUR. Inicia el plazo de 10 días para conciliación o auditoría médica.
-              </p>
-            </div>
-
-            <!-- CASO 3: FACTURA ACEPTADA TÁCITA (ESC-06 / LEY 1438 ART 57) -->
-            <div *ngIf="casoActivo().estadoAuditoria === 'FACTURA_ACEPTADA_TACITA'" class="bg-yellow-950/80 p-4 rounded-xl border border-yellow-600 space-y-3 shadow-xl">
-              <div class="flex items-center justify-between text-xs">
-                <span class="font-bold text-yellow-300 flex items-center gap-1.5">
-                  ★ TÍTULO VALOR EJECUTIVO POR ACEPTACIÓN TÁCITA
-                </span>
-                <span class="px-2 py-0.5 rounded bg-yellow-900 text-yellow-200 font-mono text-[10px]">22 Días Radicada</span>
-              </div>
-              <p class="text-xs text-yellow-100">
-                Transcurrieron 20 días hábiles sin notificación de glosa. Por ministerio de la Ley 1438 de 2011 art. 57 y Dec. 441/2022 art. 2.5.3.4.4.4, la factura está irrevocablemente aceptada. No proceden glosas posteriores.
-              </p>
-              <div class="flex items-center justify-between pt-1">
-                <span class="text-xs font-mono font-bold text-yellow-300">Total a Pagar: <span>$</span>{{ casoActivo().resumenFinanciero.valorFacturadoCop | number:'1.0-0' }} COP</span>
-                <button 
-                  (click)="despacharPagoAceptacionTacita()"
-                  [disabled]="casoActivo().aceptacionTacitaLey1438?.estadoDespachoPago === 'DESPACHADO_A_CORE_EPS'"
-                  [class]="casoActivo().aceptacionTacitaLey1438?.estadoDespachoPago === 'DESPACHADO_A_CORE_EPS'
-                    ? 'py-2 px-3 rounded bg-slate-800 text-slate-500 font-bold text-xs cursor-not-allowed'
-                    : 'py-2 px-3 rounded bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold text-xs shadow transition'"
-                >
-                  {{ casoActivo().aceptacionTacitaLey1438?.estadoDespachoPago === 'DESPACHADO_A_CORE_EPS' ? '✓ Despachado a Pago' : 'Despachar a Pago Core EPS' }}
-                </button>
-              </div>
-            </div>
-
-            <!-- CASO 4: CASO PENDIENTE ORDINARIO (ESC-01, ESC-02, ESC-03) -->
-            <ng-container *ngIf="casoActivo().estadoAuditoria === 'PENDIENTE'">
-              
-              <!-- MODO RATIFICACIÓN RÁPIDA (F05 / US-12) -->
-              <div *ngIf="!modoSobreescritura()" class="space-y-3">
-                <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
-                  <div>
-                    <p class="text-slate-500">Auditor Responsable:</p>
-                    <p class="font-bold text-slate-900">{{ auditorActual.nombre }} <span class="text-[var(--color-brand)] font-mono">({{ auditorActual.registroMedico }})</span></p>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-slate-500">Acción Sugerida:</p>
-                    <p class="font-bold text-emerald-700">Ratificación en 1 Clic</p>
-                  </div>
-                </div>
-
-                <p *ngIf="ocultarSugerenciaPertinencia()" class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                  Caso de pertinencia clínica: no hay auto-aceptar ni sugerencia IA. El auditor decide en HITL.
-                </p>
-                <div class="grid grid-cols-2 gap-3">
-                  <button 
-                    *ngIf="!ocultarSugerenciaPertinencia()"
-                    (click)="ejecutarRatificacion1Clic()"
-                    class="py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition-all active:scale-95"
-                  >
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-                    <span>Aceptar<span class="demo-us-label"> (US-12)</span></span>
-                  </button>
-
-                  <button 
-                    (click)="activarModoSobreescritura()"
-                    class="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 col-span-1"
-                    [class.col-span-2]="ocultarSugerenciaPertinencia()"
-                  >
-                    <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                    <span>Sobrescribir<span class="demo-us-label"> (US-13)</span></span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- MODO SOBREESCRITURA FORENSE MÍNIMO 50 CARACTERES (US-13) -->
-              <div *ngIf="modoSobreescritura()" class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <div class="flex items-center justify-between">
-                  <h4 class="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <span>Sobreescritura Forense con Justificación Médica<span class="demo-us-label"> (US-13)</span></span>
-                  </h4>
-                  <button (click)="cancelarSobreescritura()" class="text-slate-400 hover:text-white text-xs">Cancelar</button>
-                </div>
-
-                <!-- Input Monto Ajustado -->
-                <div>
-                  <label class="block text-[11px] font-semibold text-slate-300 mb-1">Monto Final de Glosa a Imponer (COP):</label>
-                  <input 
-                    type="number" 
-                    [(ngModel)]="montoGlosaSobreescrita"
-                    class="w-full bg-white border border-slate-300 rounded px-3 py-1.5 text-xs font-mono font-bold text-[var(--color-brand)] focus:outline-none focus:border-[var(--color-brand)]"
-                  />
-                </div>
-
-                <!-- Textarea con contador duro de 50 caracteres -->
-                <div>
-                  <div class="flex justify-between items-center mb-1">
-                    <label class="block text-[11px] font-semibold text-slate-300">Justificación Médica / Legal Obligatoria:</label>
-                    <span 
-                      class="text-[10px] font-mono font-bold"
-                      [class]="justificacionTexto().length >= 50 ? 'text-emerald-400' : 'text-amber-400 animate-pulse'"
-                    >
-                      {{ justificacionTexto().length }} / 50 car. mín.
-                    </span>
-                  </div>
-
-                  <textarea 
-                    [(ngModel)]="justificacionTexto"
-                    rows="3"
-                    placeholder="Escriba la motivación clínica completa para modificar la glosa sugerida por la IA (mínimo 50 caracteres)..."
-                    class="w-full bg-white border border-slate-300 rounded p-2.5 text-xs text-slate-800 focus:outline-none focus:border-[var(--color-brand)] placeholder:text-slate-400"
-                  ></textarea>
-                </div>
-
-                <button 
-                  (click)="guardarSobreescrituraForense()"
-                  [disabled]="justificacionTexto().length < 50"
-                  [class]="justificacionTexto().length >= 50 
-                    ? 'w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg transition-all'
-                    : 'w-full py-2.5 rounded-lg bg-slate-800 text-slate-500 font-bold text-xs cursor-not-allowed border border-slate-800'"
-                >
-                  Confirmar Sobreescritura (Guardar Registro Auditor)
-                </button>
-              </div>
-
-            </ng-container>
-
-            <!-- CASO 5: CASO YA AUDITADO Y NOTIFICADO (CERTIFICADO DIGITAL) -->
-            <ng-container *ngIf="casoActivo().estadoAuditoria === 'GLOSADA_NOTIFICADA' || casoActivo().estadoAuditoria === 'APROBADA_NOTIFICADA' || casoActivo().estadoAuditoria === 'SOBREESCRITO_FORENSE'">
-              <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-200 space-y-2">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-bold text-emerald-400 flex items-center gap-1.5">
-                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <span>Firma Auditora Registrada</span>
-                  </span>
-                  <span class="text-[11px] font-mono text-slate-400">{{ casoActivo().registroDecisionHitL?.timestamp }}</span>
-                </div>
-
-                <div class="text-xs text-slate-700 font-sans space-y-1 bg-white p-2.5 rounded border border-slate-200 font-mono">
-                  <p><strong>Auditor:</strong> {{ casoActivo().registroDecisionHitL?.auditor }} ({{ casoActivo().registroDecisionHitL?.registroMedico }})</p>
-                  <p><strong>Tipo Acción:</strong> {{ casoActivo().registroDecisionHitL?.tipoAccion }}</p>
-                  <p><strong>Glosa Notificada:</strong> <span>$</span>{{ casoActivo().registroDecisionHitL?.glosaFinalCop | number:'1.0-0' }} COP</p>
-                  <p *ngIf="casoActivo().registroDecisionHitL?.justificacionMedica" class="text-purple-300">
-                    <strong>Motivación:</strong> "{{ casoActivo().registroDecisionHitL?.justificacionMedica }}"
-                  </p>
-                </div>
-              </div>
-            </ng-container>
-
-          </div>
-        </section>
-
       </main>
 
+      <!-- =================================================================== -->
+      <!-- TOAST FLOTANTE DE UNDO OPTIMISTA (5 SEGUNDOS) -->
+      <!-- =================================================================== -->
+      <div 
+        *ngIf="toastUndo()" 
+        class="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl z-50 flex items-center space-x-4 border border-slate-700 animate-slide-up text-xs font-sans"
+      >
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+        <span>Glosa <strong>#{{ toastUndo()?.codigoGlosa }}</strong> resuelta exitosamente</span>
+        <div class="h-4 w-px bg-slate-700"></div>
+        <button 
+          (click)="deshacerUltimaAccion()" 
+          class="font-bold text-amber-400 hover:text-amber-300 underline text-xs"
+        >
+          Deshacer (Z)
+        </button>
+      </div>
 
     </div>
   `
 })
 export class SplitScreenComponent implements OnInit {
-  
+
   // Auditor en sesión
   readonly auditorActual: Auditor = {
     id: 'USR-AUD-001',
@@ -809,54 +1033,75 @@ export class SplitScreenComponent implements OnInit {
     email: 'jmartinez@auditai.ibs.co'
   };
 
-  // Familias de filtro
-  readonly familiasFiltro = [
-    { id: 'TODAS', label: 'Todas' },
-    { id: 'CL', label: 'CL (Clínicas)' },
-    { id: 'TA', label: 'TA (Tarifas)' },
-    { id: 'SO', label: 'SO (Soportes)' },
-    { id: 'DE', label: 'DE (Devolución)' },
-    { id: 'AC', label: 'AC (Tácita)' }
-  ];
-
-  // Signals de estado general
+  // Signals de estado
   casos = signal<CasoAuditoria[]>([]);
   casoActivoId = signal<string>('ESC-02');
-  documentoActivoId = signal<string>('DOC-HOSP-FEV');
+  glosaActivaId = signal<string>('GL-01');
+  filtroEstadoGlosa = signal<'TODAS' | 'PENDIENTES' | 'RESUELTAS'>('TODAS');
+  documentoActivoId = signal<string>('DOC-HOSP-HQ');
+  paginaActivaVisor = signal<number>(3);
+  citaResaltadaTexto = signal<string>('');
   zoomNivel = signal<number>(100);
   mostrarBoundingBoxes = signal<boolean>(true);
-  sugerirPertinenciaIa = signal<boolean>(false);
-  filtroFamilia = signal<string>('TODAS');
+  autoAvance = signal<boolean>(true);
+  visorExpandido = signal<boolean>(false);
+  visorColapsado = signal<boolean>(false);
 
-  // Signals para Sobreescritura Forense (F06)
-  modoSobreescritura = signal<boolean>(false);
-  justificacionTexto = signal<string>('');
-  montoGlosaSobreescrita = signal<number>(0);
+  // Modo edición inline
+  modoEdicionInline = signal<boolean>(false);
+  montoAjustadoInput = signal<number>(0);
+  justificacionAjusteInput = signal<string>('');
 
-  // Computed signals reactivos
-  casosFiltrados = computed(() => {
-    const todos = this.casos();
-    const filtro = this.filtroFamilia();
-    if (filtro === 'TODAS') return todos;
-    if (filtro === 'CL') return todos.filter(c => c.causalGlosa?.familia === 'CL' || c.tipoResultadoPredictivo === 'APROBADO_DIRECTO');
-    if (filtro === 'TA') return todos.filter(c => c.causalGlosa?.familia === 'TA');
-    if (filtro === 'SO') return todos.filter(c => c.causalGlosa?.familia === 'SO');
-    if (filtro === 'DE') return todos.filter(c => c.causalGlosa?.familia === 'DE' || c.causalGlosa?.familia === 'DEVOLUCIONES' || c.causalGlosa?.familia === 'RECHAZO_RADICACION');
-    if (filtro === 'AC') return todos.filter(c => c.causalGlosa?.familia === 'AC' || c.causalGlosa?.familia === 'ACEPTACION_TACITA');
-    return todos;
-  });
+  // Toast flotante Undo
+  toastUndo = signal<{ visible: boolean; glosaId: string; codigoGlosa: string; glosaPrev: GlosaFactura } | null>(null);
+  private undoTimeout: any = null;
 
-  ocultarSugerenciaPertinencia = computed(() => {
-    if (this.sugerirPertinenciaIa()) return false;
-    const caso = this.casos().find(c => c.id === this.casoActivoId());
-    if (!caso) return false;
-    return caso.causalGlosa?.familia === 'CL' || caso.tipoResultadoPredictivo === 'APROBADO_DIRECTO';
-  });
+  private route = inject(ActivatedRoute);
+  auditoriaService = inject(AuditoriaService);
 
+  // Computeds reactivos
   casoActivo = computed(() => {
     const list = this.casos();
     const id = this.casoActivoId();
     return list.find(c => c.id === id) || list[0] || ({} as CasoAuditoria);
+  });
+
+  glosasDeFactura = computed(() => {
+    return this.casoActivo().glosasFactura || [];
+  });
+
+  glosasFiltradas = computed(() => {
+    const todas = this.glosasDeFactura();
+    const f = this.filtroEstadoGlosa();
+    if (f === 'PENDIENTES') return todas.filter(g => g.estadoGlosa === 'PENDIENTE');
+    if (f === 'RESUELTAS') return todas.filter(g => g.estadoGlosa === 'RESUELTA' || g.estadoGlosa === 'ESCALADA');
+    return todas;
+  });
+
+  glosaActiva = computed(() => {
+    const list = this.glosasDeFactura();
+    const id = this.glosaActivaId();
+    return list.find(g => g.id === id) || list[0] || null;
+  });
+
+  progresoGlosas = computed(() => {
+    const todas = this.glosasDeFactura();
+    const total = todas.length;
+    if (total === 0) return { total: 0, resueltas: 0, pendientes: 0, porcentaje: 100, completado: true };
+    const resueltas = todas.filter(g => g.estadoGlosa === 'RESUELTA' || g.estadoGlosa === 'ESCALADA').length;
+    const pendientes = total - resueltas;
+    const porcentaje = Math.round((resueltas / total) * 100);
+    return { total, resueltas, pendientes, porcentaje, completado: resueltas === total };
+  });
+
+  conciliacionFactura = computed(() => {
+    const caso = this.casoActivo();
+    const glosas = this.glosasDeFactura();
+    const facturadoTotal = caso.resumenFinanciero?.valorFacturadoCop || 0;
+    const glosaInicialTotal = glosas.reduce((acc, g) => acc + g.valorGlosaInicialCop, 0);
+    const glosaDefinitivaTotal = glosas.reduce((acc, g) => acc + (g.decisionAplicada ? g.decisionAplicada.valorFinalGlosaCop : g.valorGlosaDefinitivaCop), 0);
+    const aprobadoFinalTotal = Math.max(facturadoTotal - glosaDefinitivaTotal, 0);
+    return { facturadoTotal, glosaInicialTotal, glosaDefinitivaTotal, aprobadoFinalTotal };
   });
 
   documentoActivo = computed(() => {
@@ -868,16 +1113,22 @@ export class SplitScreenComponent implements OnInit {
   boundingBoxesDocumentoActivo = computed(() => {
     const caso = this.casoActivo();
     const docId = this.documentoActivoId();
+    const pag = this.paginaActivaVisor();
     if (!caso.boundingBoxes) return [];
-    return caso.boundingBoxes.filter(b => b.documentoId === docId);
+    return caso.boundingBoxes.filter(b => b.documentoId === docId && b.pagina === pag);
   });
 
-  private route = inject(ActivatedRoute);
-  auditoriaService = inject(AuditoriaService);
+  anchoPanelResolucion = computed(() => {
+    if (this.visorExpandido()) return 28;
+    if (this.visorColapsado()) return 60;
+    return 40;
+  });
 
-  trackByCasoId(index: number, caso: CasoAuditoria): string {
-    return caso.id;
-  }
+  anchoPanelEvidencia = computed(() => {
+    if (this.visorExpandido()) return 48;
+    if (this.visorColapsado()) return 16;
+    return 36;
+  });
 
   ngOnInit(): void {
     this.cargarCasosSemillaMock();
@@ -902,12 +1153,397 @@ export class SplitScreenComponent implements OnInit {
     else if (param === 'ESC-06') this.seleccionarCaso('ESC-06');
   }
 
-  setFiltroFamilia(familia: string): void {
-    this.filtroFamilia.set(familia);
+  seleccionarCaso(id: string): void {
+    this.casoActivoId.set(id);
+    this.auditoriaService.setScenario(id);
+    const caso = this.casos().find(c => c.id === id);
+    if (!caso) return;
+
+    // Smart Landing: enfocar primera glosa pendiente
+    const primeraPendiente = caso.glosasFactura?.find(g => g.estadoGlosa === 'PENDIENTE');
+    const glosaInicial = primeraPendiente || caso.glosasFactura?.[0];
+    if (glosaInicial) {
+      this.seleccionarGlosa(glosaInicial.id);
+    } else if (caso.soportesDocumentales?.length) {
+      this.documentoActivoId.set(caso.soportesDocumentales[0].id);
+      this.paginaActivaVisor.set(1);
+    }
+    this.modoEdicionInline.set(false);
   }
 
+  seleccionarGlosa(glosaId: string): void {
+    this.glosaActivaId.set(glosaId);
+    this.modoEdicionInline.set(false);
+    const glosa = this.glosasDeFactura().find(g => g.id === glosaId);
+    if (glosa) {
+      if (glosa.citasSoporte?.length) {
+        this.enfocarCita(glosa.citasSoporte[0]);
+      } else if (glosa.documentosRelacionadosIds?.length) {
+        this.documentoActivoId.set(glosa.documentosRelacionadosIds[0]);
+        this.paginaActivaVisor.set(1);
+        this.citaResaltadaTexto.set('');
+      }
+    }
+  }
+
+  enfocarCita(cita: CitaSoporteGlosa): void {
+    this.documentoActivoId.set(cita.documentoId);
+    this.paginaActivaVisor.set(cita.pagina);
+    this.citaResaltadaTexto.set(cita.extractoCita);
+    this.mostrarBoundingBoxes.set(true);
+  }
+
+  esSoporteRelevante(docId: string): boolean {
+    const glosa = this.glosaActiva();
+    if (!glosa) return false;
+    return glosa.documentosRelacionadosIds?.includes(docId) || false;
+  }
+
+  seleccionarDocumento(docId: string): void {
+    this.documentoActivoId.set(docId);
+    this.paginaActivaVisor.set(1);
+    this.citaResaltadaTexto.set('');
+  }
+
+  cambiarPagina(delta: number): void {
+    const doc = this.documentoActivo();
+    const max = doc?.totalPaginas || 1;
+    const nueva = Math.min(Math.max(this.paginaActivaVisor() + delta, 1), max);
+    this.paginaActivaVisor.set(nueva);
+  }
+
+  cambiarZoom(delta: number): void {
+    const nuevo = Math.min(Math.max(this.zoomNivel() + delta, 60), 160);
+    this.zoomNivel.set(nuevo);
+  }
+
+  toggleBoundingBoxes(): void {
+    this.mostrarBoundingBoxes.set(!this.mostrarBoundingBoxes());
+  }
+
+  toggleAutoAvance(): void {
+    this.autoAvance.set(!this.autoAvance());
+  }
+
+  toggleExpandirVisor(): void {
+    if (this.visorExpandido()) {
+      this.visorExpandido.set(false);
+    } else {
+      this.visorExpandido.set(true);
+      this.visorColapsado.set(false);
+    }
+  }
+
+  // ACCIÓN 1: APLICAR SUGERENCIA IA (1 CLIC / ENTER)
+  aplicarSugerenciaIa(glosa: GlosaFactura): void {
+    const copiaPrevia = JSON.parse(JSON.stringify(glosa));
+    const auditor = this.auditorActual;
+
+    const list = this.casos().map(c => {
+      if (c.id === this.casoActivoId()) {
+        const nuevasGlosas = c.glosasFactura.map(g => {
+          if (g.id === glosa.id) {
+            return {
+              ...g,
+              estadoGlosa: 'RESUELTA' as const,
+              valorGlosaDefinitivaCop: g.valorGlosaSugeridaIaCop,
+              decisionAplicada: {
+                tipo: 'ACEPTADA_IA' as const,
+                etiqueta: 'Sugerencia IA Aplicada',
+                valorFinalGlosaCop: g.valorGlosaSugeridaIaCop,
+                argumentoFinal: g.borradorRespuestaIa,
+                auditor: auditor.nombre,
+                timestamp: new Date().toISOString()
+              }
+            };
+          }
+          return g;
+        });
+        return { ...c, glosasFactura: nuevasGlosas };
+      }
+      return c;
+    });
+
+    this.casos.set(list);
+    this.dispararToastUndo(glosa.id, glosa.id, copiaPrevia);
+
+    if (this.autoAvance()) {
+      setTimeout(() => this.avanzarSiguienteGlosaPendiente(), 250);
+    }
+  }
+
+  // ACCIÓN 2: MANTENER GLOSA AL 100%
+  mantenerGlosaTotal(glosa: GlosaFactura): void {
+    const copiaPrevia = JSON.parse(JSON.stringify(glosa));
+    const auditor = this.auditorActual;
+
+    const list = this.casos().map(c => {
+      if (c.id === this.casoActivoId()) {
+        const nuevasGlosas = c.glosasFactura.map(g => {
+          if (g.id === glosa.id) {
+            return {
+              ...g,
+              estadoGlosa: 'RESUELTA' as const,
+              valorGlosaDefinitivaCop: g.valorGlosaInicialCop,
+              decisionAplicada: {
+                tipo: 'MANTENIDA_TOTAL' as const,
+                etiqueta: 'Glosa Ratificada al 100%',
+                valorFinalGlosaCop: g.valorGlosaInicialCop,
+                argumentoFinal: `Se ratifica el 100% de la glosa inicial (${g.causal.codigoManualUnico}) tras revisión documental completa.`,
+                auditor: auditor.nombre,
+                timestamp: new Date().toISOString()
+              }
+            };
+          }
+          return g;
+        });
+        return { ...c, glosasFactura: nuevasGlosas };
+      }
+      return c;
+    });
+
+    this.casos.set(list);
+    this.dispararToastUndo(glosa.id, glosa.id, copiaPrevia);
+
+    if (this.autoAvance()) {
+      setTimeout(() => this.avanzarSiguienteGlosaPendiente(), 250);
+    }
+  }
+
+  // ACCIÓN 3: ESCALAR GLOSA
+  escalarGlosa(glosa: GlosaFactura): void {
+    const copiaPrevia = JSON.parse(JSON.stringify(glosa));
+    const auditor = this.auditorActual;
+
+    const list = this.casos().map(c => {
+      if (c.id === this.casoActivoId()) {
+        const nuevasGlosas = c.glosasFactura.map(g => {
+          if (g.id === glosa.id) {
+            return {
+              ...g,
+              estadoGlosa: 'ESCALADA' as const,
+              decisionAplicada: {
+                tipo: 'ESCALADA_ESPECIALISTA' as const,
+                etiqueta: 'Escalada a Médico Especialista',
+                valorFinalGlosaCop: g.valorGlosaInicialCop,
+                argumentoFinal: 'Escalada a segundo nivel de auditoría médica para conciliación de pertinencia clínica.',
+                auditor: auditor.nombre,
+                timestamp: new Date().toISOString()
+              }
+            };
+          }
+          return g;
+        });
+        return { ...c, glosasFactura: nuevasGlosas };
+      }
+      return c;
+    });
+
+    this.casos.set(list);
+    this.dispararToastUndo(glosa.id, glosa.id, copiaPrevia);
+  }
+
+  // ACCIÓN 4: EDICIÓN INLINE CON BLINDAJE FORENSE
+  activarEdicionInline(glosa: GlosaFactura): void {
+    this.montoAjustadoInput.set(glosa.valorGlosaDefinitivaCop || glosa.valorGlosaSugeridaIaCop);
+    this.justificacionAjusteInput.set('');
+    this.modoEdicionInline.set(true);
+  }
+
+  cancelarEdicionInline(): void {
+    this.modoEdicionInline.set(false);
+  }
+
+  guardarEdicionInline(glosa: GlosaFactura): void {
+    if (this.justificacionAjusteInput().length < 50) return;
+    const copiaPrevia = JSON.parse(JSON.stringify(glosa));
+    const auditor = this.auditorActual;
+    const monto = this.montoAjustadoInput();
+    const justificacion = this.justificacionAjusteInput();
+
+    const list = this.casos().map(c => {
+      if (c.id === this.casoActivoId()) {
+        const nuevasGlosas = c.glosasFactura.map(g => {
+          if (g.id === glosa.id) {
+            return {
+              ...g,
+              estadoGlosa: 'RESUELTA' as const,
+              valorGlosaDefinitivaCop: monto,
+              decisionAplicada: {
+                tipo: 'AJUSTADA_AUDITOR' as const,
+                etiqueta: 'Ajuste Manual Forense',
+                valorFinalGlosaCop: monto,
+                argumentoFinal: justificacion,
+                auditor: auditor.nombre,
+                timestamp: new Date().toISOString()
+              }
+            };
+          }
+          return g;
+        });
+        return { ...c, glosasFactura: nuevasGlosas };
+      }
+      return c;
+    });
+
+    this.casos.set(list);
+    this.modoEdicionInline.set(false);
+    this.dispararToastUndo(glosa.id, glosa.id, copiaPrevia);
+
+    if (this.autoAvance()) {
+      setTimeout(() => this.avanzarSiguienteGlosaPendiente(), 250);
+    }
+  }
+
+  // DESHACER OPTIMISTA (Z)
+  private dispararToastUndo(glosaId: string, codigoGlosa: string, glosaPrev: GlosaFactura): void {
+    if (this.undoTimeout) clearTimeout(this.undoTimeout);
+    this.toastUndo.set({ visible: true, glosaId, codigoGlosa, glosaPrev });
+    this.undoTimeout = setTimeout(() => {
+      this.toastUndo.set(null);
+    }, 5000);
+  }
+
+  deshacerUltimaAccion(): void {
+    const t = this.toastUndo();
+    if (!t) return;
+    const list = this.casos().map(c => {
+      if (c.id === this.casoActivoId()) {
+        const restauradas = c.glosasFactura.map(g => {
+          if (g.id === t.glosaId) {
+            return { ...t.glosaPrev };
+          }
+          return g;
+        });
+        return { ...c, glosasFactura: restauradas };
+      }
+      return c;
+    });
+
+    this.casos.set(list);
+    this.toastUndo.set(null);
+    this.seleccionarGlosa(t.glosaId);
+  }
+
+  avanzarSiguienteGlosaPendiente(): void {
+    const pendientes = this.glosasDeFactura().filter(g => g.estadoGlosa === 'PENDIENTE');
+    if (pendientes.length > 0) {
+      this.seleccionarGlosa(pendientes[0].id);
+    }
+  }
+
+  finalizarAuditoriaFactura(): void {
+    const conc = this.conciliacionFactura();
+    alert(`Auditoría de Factura ${this.casoActivo().fevNumero} Finalizada Exitosamente.\\n\\n• Total Facturado: \$$conc.facturadoTotal.toLocaleString('es-CO')} COP\\n• Total Glosa Definitiva: \$$conc.glosaDefinitivaTotal.toLocaleString('es-CO')} COP\\n• Valor Neto Aprobado: \$$conc.aprobadoFinalTotal.toLocaleString('es-CO')} COP\\n\\nExpediente despachado formalmente a Tesorería y notificado a la IPS.`);
+  }
+
+  // Métodos normativos de respaldo
+  descargarConstanciaRechazo(): void {
+    alert('Descargando Constancia Oficial de Rechazo Inmediato por Falta de CUV (Res. 0948/2026 Art. 3.1) en formato PDF.');
+  }
+
+  simularPreclusionDevolucion(): void {
+    const list = this.casos().map(c => {
+      if (c.id === 'ESC-05') {
+        return {
+          ...c,
+          estadoAuditoria: 'DEVOLUCION_PRECLUIDA' as const,
+          semaforo: {
+            ...c.semaforo,
+            diasHabilesRestantes: 0,
+            mensajeNormativo: 'PRECLUSIÓN DE DEVOLUCIÓN: Superados 5 días hábiles. Debe auditarse por glosas.'
+          }
+        };
+      }
+      return c;
+    });
+    this.casos.set(list);
+  }
+
+  simularRespuestaIps(tipo: 'RE9701' | 'RE9601'): void {
+    const list = this.casos().map(c => {
+      if (c.id === 'ESC-05') {
+        return {
+          ...c,
+          estadoAuditoria: tipo === 'RE9701' ? ('APROBADA_NOTIFICADA' as const) : ('DEVOLUCION_CONTROVERTIDA' as const),
+          semaforo: {
+            ...c.semaforo,
+            mensajeNormativo: tipo === 'RE9701' ? 'IPS Aceptó devolución (RE9701): Se expedirá Nota Crédito y nuevo NUR.' : 'IPS Controvirtió devolución (RE9601): Continúa sobre el mismo NUR.'
+          }
+        };
+      }
+      return c;
+    });
+    this.casos.set(list);
+  }
+
+  despacharPagoAceptacionTacita(): void {
+    const list = this.casos().map(c => {
+      if (c.id === 'ESC-06') {
+        return {
+          ...c,
+          aceptacionTacitaLey1438: {
+            ...c.aceptacionTacitaLey1438!,
+            estadoDespachoPago: 'DESPACHADO_A_CORE_EPS' as const
+          }
+        };
+      }
+      return c;
+    });
+    this.casos.set(list);
+    alert('Factura despachada formalmente al Core de Tesorería para giro directo por aceptación tácita perentoria.');
+  }
+
+  // Atajos de Teclado
+  @HostListener('window:keydown', ['$event'])
+  manejarAtajosTeclado(event: KeyboardEvent): void {
+    // Si el usuario está escribiendo en un input o textarea, no capturar teclas globales
+    const tag = (event.target as HTMLElement)?.tagName?.toUpperCase();
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    if (event.key === 'j' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      const todas = this.glosasFiltradas();
+      const idx = todas.findIndex(g => g.id === this.glosaActivaId());
+      if (idx >= 0 && idx < todas.length - 1) {
+        this.seleccionarGlosa(todas[idx + 1].id);
+      }
+    } else if (event.key === 'k' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const todas = this.glosasFiltradas();
+      const idx = todas.findIndex(g => g.id === this.glosaActivaId());
+      if (idx > 0) {
+        this.seleccionarGlosa(todas[idx - 1].id);
+      }
+    } else if ((event.key === 'Enter' || event.key === 'a' || event.key === 'A') && !this.modoEdicionInline()) {
+      const glosa = this.glosaActiva();
+      if (glosa && glosa.estadoGlosa === 'PENDIENTE') {
+        event.preventDefault();
+        this.aplicarSugerenciaIa(glosa);
+      }
+    } else if ((event.key === 'e' || event.key === 'E') && !this.modoEdicionInline()) {
+      const glosa = this.glosaActiva();
+      if (glosa) {
+        event.preventDefault();
+        this.activarEdicionInline(glosa);
+      }
+    } else if (event.key === 'z' || event.key === 'Z') {
+      if (this.toastUndo()) {
+        event.preventDefault();
+        this.deshacerUltimaAccion();
+      }
+    } else if (event.key === '[' || event.key === ']') {
+      event.preventDefault();
+      this.toggleExpandirVisor();
+    }
+  }
+
+  // Carga de Semillas Mock
   cargarCasosSemillaMock(): void {
     const casosSemilla: CasoAuditoria[] = [
+      // ----------------------------------------------------------------------
+      // ESC-01: Cuenta Conforme (Aprobada Directa)
+      // ----------------------------------------------------------------------
       {
         id: 'ESC-01',
         nur: 'NUR-2026-8849201',
@@ -951,7 +1587,7 @@ export class SplitScreenComponent implements OnInit {
           valorGlosaSugeridaCop: 0.0,
           valorAprobadoSugeridoCop: 2450000.0
         },
-        estadoAuditoria: 'PENDIENTE',
+        estadoAuditoria: 'APROBADA_NOTIFICADA',
         tipoResultadoPredictivo: 'APROBADO_DIRECTO',
         confianzaIaPorcentaje: 99.2,
         causalGlosa: null,
@@ -966,45 +1602,68 @@ export class SplitScreenComponent implements OnInit {
             valorGlosaSugeridaCop: 0.0,
             estadoItem: 'CONFORME',
             observacionIa: 'Coincidencia exacta con Anexo Contractual SOAT 2026 + 5%.'
-          },
+          }
+        ],
+        glosasFactura: [
           {
-            linea: 2,
-            codigoCups: '890201',
-            descripcionCups: 'Consulta de medicina especializada quirúrgica',
-            cantidad: 1,
-            valorFacturadoCop: 120000.0,
-            valorTarifaPactadaCop: 120000.0,
-            valorGlosaSugeridaCop: 0.0,
-            estadoItem: 'CONFORME',
-            observacionIa: 'Consulta intrahospitalaria prequirúrgica autorizada.'
+            id: 'GL-01',
+            lineaItem: 1,
+            codigoCups: '471110',
+            descripcionItem: 'Colecistectomía laparoscópica vía abdominal',
+            tituloCorto: 'Validación Quirúrgica Conforme',
+            causal: {
+              codigoManualUnico: 'SIN_GLOSA',
+              codigoRes3047: '000',
+              familia: 'CL',
+              descripcion: 'Procedimiento quirúrgico plenamente justificado en historia clínica'
+            },
+            valorFacturadoItemCop: 1850000.0,
+            valorTarifaPactadaItemCop: 1850000.0,
+            valorGlosaInicialCop: 0.0,
+            valorGlosaSugeridaIaCop: 0.0,
+            valorGlosaDefinitivaCop: 0.0,
+            veredictoIa: 'APROBAR_ITEM',
+            confianzaIaPorcentaje: 99.2,
+            causaDetalle: 'Validación integral exitosa: tiempos quirúrgicos, técnica laparoscópica y tarifas pactadas coinciden al 100%.',
+            solucionSugeridaIa: 'Aprobar directamente para pago sin objeciones (Straight-Through Processing).',
+            sustentoNormativo: 'Resolución 2284 de 2023 - Procedimientos conforme a tarifas contratadas.',
+            fuentesCite: ['Resolución 2284 de 2023', 'Acuerdo de Voluntades CTR-2026-SOS-CLINICA-AMERICAS'],
+            borradorRespuestaIa: 'Cuenta conforme. Aprobada para pago.',
+            citasSoporte: [
+              {
+                etiqueta: 'Epicrisis Quirúrgica (pág. 1)',
+                documentoId: 'DOC-8849201-EPI',
+                pagina: 1,
+                extractoCita: 'Colecistectomía laparoscópica electiva sin complicaciones.'
+              }
+            ],
+            documentosRelacionadosIds: ['DOC-8849201-EPI', 'DOC-8849201-FEV'],
+            estadoGlosa: 'RESUELTA',
+            decisionAplicada: {
+              tipo: 'ACEPTADA_IA',
+              etiqueta: 'Aprobación Directa',
+              valorFinalGlosaCop: 0,
+              argumentoFinal: 'Cuenta médica con conformidad integral del 100%.',
+              auditor: 'Dr. Juan Martínez',
+              timestamp: '2026-10-20T09:30:00-05:00'
+            }
           }
         ],
         soportesDocumentales: [
-          {
-            id: 'DOC-8849201-FEV',
-            tipoDocumento: 'FEV_XML',
-            nombreArchivo: 'FEV_982104_ClAméricas.xml',
-            urlMock: 'assets/soportes/FEV_982104.xml',
-            totalPaginas: 1
-          },
-          {
-            id: 'DOC-8849201-EPI',
-            tipoDocumento: 'EPICRISIS_PDF',
-            nombreArchivo: 'Epicrisis_GloriaRestrepo.pdf',
-            urlMock: 'assets/soportes/Epicrisis_GloriaRestrepo.pdf',
-            totalPaginas: 2
-          }
+          { id: 'DOC-8849201-FEV', tipoDocumento: 'FEV_XML', nombreArchivo: 'FEV_982104.xml', urlMock: 'assets/soportes/FEV_982104.xml', totalPaginas: 1 },
+          { id: 'DOC-8849201-EPI', tipoDocumento: 'EPICRISIS_PDF', nombreArchivo: 'Epicrisis.pdf', urlMock: 'assets/soportes/Epicrisis.pdf', totalPaginas: 2 }
         ],
         boundingBoxes: [],
         explicacionIaRag: {
-          resumenEjecutivo: 'Cuenta médica con conformidad integral del 100%. No se evidencian desviaciones tarifarias ni faltantes de soporte.',
-          sustentoNormativo: 'Res. 2284/2023 Anexo 3. Los valores facturados corresponden con precisión al acuerdo CTR-2026-SOS-CLINICA-AMERICAS.',
-          fuentesCite: [
-            'Manual Único de Devoluciones y Glosas - Res. 2284/2023',
-            'Contrato Marco de Servicios Quirúrgicos SOS EPS 2026'
-          ]
+          resumenEjecutivo: 'Cuenta médica con conformidad integral del 100%.',
+          sustentoNormativo: 'Resolución 2284 de 2023 Anexo 3.',
+          fuentesCite: ['Resolución 2284 de 2023']
         }
       },
+
+      // ----------------------------------------------------------------------
+      // ESC-02: Hospital San Vicente Fundación (MÚLTIPLES GLOSAS: 3 GLOSAS)
+      // ----------------------------------------------------------------------
       {
         id: 'ESC-02',
         nur: 'NUR-2026-8849202',
@@ -1043,10 +1702,10 @@ export class SplitScreenComponent implements OnInit {
           mensajeNormativo: '¡ALERTA MÁXIMA DE VENCIMIENTO! Faltan 3 días hábiles para riesgo de glosa tácita'
         },
         resumenFinanciero: {
-          valorFacturadoCop: 235000.0,
-          valorTarifaPactadaCop: 215000.0,
-          valorGlosaSugeridaCop: 20000.0,
-          valorAprobadoSugeridoCop: 215000.0
+          valorFacturadoCop: 580000.0,
+          valorTarifaPactadaCop: 545000.0,
+          valorGlosaSugeridaCop: 260000.0,
+          valorAprobadoSugeridoCop: 320000.0
         },
         estadoAuditoria: 'PENDIENTE',
         tipoResultadoPredictivo: 'GLOSA_PARCIAL',
@@ -1067,60 +1726,189 @@ export class SplitScreenComponent implements OnInit {
             valorTarifaPactadaCop: 65000.0,
             valorGlosaSugeridaCop: 20000.0,
             estadoItem: 'GLOSADO_SUGERIDO',
-            observacionIa: 'Valor cobrado ($85.000) excede en $20.000 la tarifa base pactada ($65.000) en Contrato CTR-2026-SOS-SANVICENTE.'
+            observacionIa: 'Excedente tarifario no pactado.'
           },
           {
             linea: 2,
             codigoCups: '902210',
-            descripcionCups: 'Hemograma IV (hemoglobina, hematocrito)',
+            descripcionCups: 'Hemograma IV automatizado',
             cantidad: 1,
-            valorFacturadoCop: 30000.0,
+            valorFacturadoCop: 45000.0,
             valorTarifaPactadaCop: 30000.0,
-            valorGlosaSugeridaCop: 0.0,
-            estadoItem: 'CONFORME',
-            observacionIa: 'Tarifa conforme con el manual de laboratorio vigente.'
+            valorGlosaSugeridaCop: 15000.0,
+            estadoItem: 'GLOSADO_SUGERIDO',
+            observacionIa: 'Tarifa de laboratorio excedida.'
+          },
+          {
+            linea: 3,
+            codigoCups: '939400',
+            descripcionCups: 'Oxigenoterapia continua en urgencias (8 horas)',
+            cantidad: 1,
+            valorFacturadoCop: 450000.0,
+            valorTarifaPactadaCop: 450000.0,
+            valorGlosaSugeridaCop: 225000.0,
+            estadoItem: 'GLOSADO_SUGERIDO',
+            observacionIa: 'Soporte clínico cubre 4 horas efectivas.'
+          }
+        ],
+        glosasFactura: [
+          {
+            id: 'GL-01',
+            lineaItem: 1,
+            codigoCups: '890201',
+            descripcionItem: 'Consulta de Medicina General / Urgencias',
+            tituloCorto: 'Tarifa Urgencias superior a la pactada',
+            causal: {
+              codigoManualUnico: 'TA0201',
+              codigoRes3047: '312',
+              familia: 'TA',
+              descripcion: 'Tarifa superior a la pactada en el acuerdo de voluntades'
+            },
+            valorFacturadoItemCop: 85000.0,
+            valorTarifaPactadaItemCop: 65000.0,
+            valorGlosaInicialCop: 20000.0,
+            valorGlosaSugeridaIaCop: 20000.0,
+            valorGlosaDefinitivaCop: 20000.0,
+            veredictoIa: 'RATIFICAR_TOTAL',
+            confianzaIaPorcentaje: 95.0,
+            causaDetalle: 'El valor liquidado en factura ($85.000 COP) excede en $20.000 COP la tarifa pactada en Contrato CTR-2026-SOS-SANVICENTE Anexo 1 ($65.000 COP).',
+            solucionSugeridaIa: 'Ratificar la glosa por $20.000 COP. La tarifa del anexo contractual vigente no admite sobrecosto en consulta médica de primer nivel.',
+            sustentoNormativo: 'Resolución 2284 de 2023 Anexo 3 Causal TA0201 (Causal 312 Res. 3047).',
+            fuentesCite: ['Manual Único de Glosas Res. 2284/2023', 'Contrato CTR-2026-SOS-SANVICENTE'],
+            borradorRespuestaIa: 'Se ratifica glosa por valor de $20.000 COP en la línea 1 (CUPS 890201) por exceder la tarifa pactada de $65.000 COP.',
+            citasSoporte: [
+              {
+                etiqueta: 'Hoja Quirúrgica (pág. 3)',
+                documentoId: 'DOC-HOSP-HQ',
+                pagina: 3,
+                boundingBoxId: 'BB-ESC02-01',
+                extractoCita: 'CUPS 890201 Consulta Medicina General Urgencias. Valor liquidado en orden: $85.000 COP.'
+              }
+            ],
+            documentosRelacionadosIds: ['DOC-HOSP-HQ', 'DOC-HOSP-FEV'],
+            estadoGlosa: 'PENDIENTE'
+          },
+          {
+            id: 'GL-02',
+            lineaItem: 2,
+            codigoCups: '902210',
+            descripcionItem: 'Hemograma IV Automatizado',
+            tituloCorto: 'Tarifa de laboratorio clínico excede tarifario base',
+            causal: {
+              codigoManualUnico: 'TA0201',
+              codigoRes3047: '312',
+              familia: 'TA',
+              descripcion: 'Tarifa superior a la pactada en el acuerdo de voluntades'
+            },
+            valorFacturadoItemCop: 45000.0,
+            valorTarifaPactadaItemCop: 30000.0,
+            valorGlosaInicialCop: 15000.0,
+            valorGlosaSugeridaIaCop: 15000.0,
+            valorGlosaDefinitivaCop: 15000.0,
+            veredictoIa: 'RATIFICAR_TOTAL',
+            confianzaIaPorcentaje: 93.5,
+            causaDetalle: 'Se liquidó Hemograma IV a $45.000 COP cuando la tarifa pactada en el manual institucional es de $30.000 COP.',
+            solucionSugeridaIa: 'Ratificar glosa de $15.000 COP. En la página 2 del reporte paraclínico se valida la ejecución técnica pero aplica tarifa contratada de $30.000 COP.',
+            sustentoNormativo: 'Resolución 2284 de 2023 - Manual de tarifas de laboratorio.',
+            fuentesCite: ['Resolución 2284 de 2023', 'Anexo Tarifario Laboratorio 2026'],
+            borradorRespuestaIa: 'Glosa ratificada por $15.000 COP conforme al anexo tarifario de laboratorio pactado.',
+            citasSoporte: [
+              {
+                etiqueta: 'Reporte Laboratorio (pág. 2)',
+                documentoId: 'DOC-HOSP-LAB',
+                pagina: 2,
+                boundingBoxId: 'BB-ESC02-02',
+                extractoCita: 'Hemograma IV validado por bacteriólogo a las 15:20 hrs. Valores dentro de rango estándar.'
+              }
+            ],
+            documentosRelacionadosIds: ['DOC-HOSP-LAB', 'DOC-HOSP-FEV'],
+            estadoGlosa: 'PENDIENTE'
+          },
+          {
+            id: 'GL-03',
+            lineaItem: 3,
+            codigoCups: '939400',
+            descripcionItem: 'Oxigenoterapia continua en urgencias (8 horas)',
+            tituloCorto: 'Oxigenoterapia: 8 horas cobradas vs 4 horas en notas',
+            causal: {
+              codigoManualUnico: 'CL0102',
+              codigoRes3047: '401',
+              familia: 'CL',
+              descripcion: 'Cantidad de servicios facturados no justificada en la historia clínica'
+            },
+            valorFacturadoItemCop: 450000.0,
+            valorTarifaPactadaItemCop: 450000.0,
+            valorGlosaInicialCop: 450000.0,
+            valorGlosaSugeridaIaCop: 225000.0,
+            valorGlosaDefinitivaCop: 225000.0,
+            veredictoIa: 'LEVANTAR_PARCIAL',
+            confianzaIaPorcentaje: 94.2,
+            causaDetalle: 'Cobro de Oxigenoterapia continua por 8 horas ($450.000 COP), pero las notas de enfermería y evolución solo registran suministro efectivo durante 4 horas.',
+            solucionSugeridaIa: 'Según nota médica de las 14:30 (Epicrisis pág. 4), se administró O2 de 14:30 a 18:30 (4 horas). Se sugiere conciliar ajuste a $225.000 COP y ratificar el saldo de $225.000 COP.',
+            sustentoNormativo: 'Resolución 2284 de 2023 - Causal CL0102: "Cantidad de servicios facturados no justificada en la historia clínica".',
+            fuentesCite: ['Resolución 2284 de 2023', 'Guía de Práctica Clínica Oxigenoterapia MinSalud'],
+            borradorRespuestaIa: 'Se concilia reconocimiento de 4 horas sustentadas en notas médicas ($225.000 COP) y se ratifica glosa por las 4 horas no soportadas ($225.000 COP).',
+            citasSoporte: [
+              {
+                etiqueta: 'Epicrisis / Notas Enfermería (pág. 4)',
+                documentoId: 'DOC-HOSP-EPI',
+                pagina: 4,
+                boundingBoxId: 'BB-ESC02-03',
+                extractoCita: '...se administra O2 continuo por cánula nasal durante 4 hrs (14:30 - 18:30). Paciente satura 96% al aire ambiente...'
+              }
+            ],
+            documentosRelacionadosIds: ['DOC-HOSP-EPI', 'DOC-HOSP-HQ'],
+            estadoGlosa: 'PENDIENTE'
           }
         ],
         soportesDocumentales: [
-          { id: 'DOC-HOSP-FEV', tipoDocumento: 'FEV_XML', nombreArchivo: 'FEV.xml', urlMock: 'assets/soportes/FEV_104921.xml', totalPaginas: 1 },
-          { id: 'DOC-HOSP-REC', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Recibo.pdf', urlMock: 'assets/soportes/Recibo.pdf', totalPaginas: 1 },
-          { id: 'DOC-HOSP-FOR', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Formula.pdf', urlMock: 'assets/soportes/Formula.pdf', totalPaginas: 2 },
-          { id: 'DOC-HOSP-EPI', tipoDocumento: 'EPICRISIS_PDF', nombreArchivo: 'Epicrisis.pdf', urlMock: 'assets/soportes/Epicrisis.pdf', totalPaginas: 4 },
-          { id: 'DOC-HOSP-HQ', tipoDocumento: 'HOJA_QUIRURGICA_PDF', nombreArchivo: 'Hoja_qx.pdf', urlMock: 'assets/soportes/HojaQuirurgica_JorgeMejia.pdf', totalPaginas: 4 },
+          { id: 'DOC-HOSP-HQ', tipoDocumento: 'HOJA_QUIRURGICA_PDF', nombreArchivo: 'Hoja_qx.pdf', urlMock: 'assets/soportes/HojaQuirurgica.pdf', totalPaginas: 4 },
           { id: 'DOC-HOSP-LAB', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Laboratorio.pdf', urlMock: 'assets/soportes/Laboratorio.pdf', totalPaginas: 2 },
-          { id: 'DOC-HOSP-IMG', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Imagen.pdf', urlMock: 'assets/soportes/Imagen.pdf', totalPaginas: 3 },
-          { id: 'DOC-HOSP-CON', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Consentimiento.pdf', urlMock: 'assets/soportes/Consentimiento.pdf', totalPaginas: 2 },
-          { id: 'DOC-HOSP-EVO', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Evolucion.pdf', urlMock: 'assets/soportes/Evolucion.pdf', totalPaginas: 6 },
-          { id: 'DOC-HOSP-RIP', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'RIPS.json', urlMock: 'assets/soportes/RIPS.json', totalPaginas: 1 },
-          { id: 'DOC-HOSP-AUT', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Autorizacion.pdf', urlMock: 'assets/soportes/Autorizacion.pdf', totalPaginas: 1 },
-          { id: 'DOC-HOSP-2284', tipoDocumento: 'OTRO_PDF', nombreArchivo: 'Anexo_2284.pdf', urlMock: 'assets/soportes/Anexo_2284.pdf', totalPaginas: 2 }
+          { id: 'DOC-HOSP-EPI', tipoDocumento: 'EPICRISIS_PDF', nombreArchivo: 'Epicrisis.pdf', urlMock: 'assets/soportes/Epicrisis.pdf', totalPaginas: 4 },
+          { id: 'DOC-HOSP-FEV', tipoDocumento: 'FEV_XML', nombreArchivo: 'FEV.xml', urlMock: 'assets/soportes/FEV.xml', totalPaginas: 1 }
         ],
         boundingBoxes: [
           {
             id: 'BB-ESC02-01',
             documentoId: 'DOC-HOSP-HQ',
             pagina: 3,
-            coordenadas: {
-              x: 10.0,
-              y: 42.0,
-              width: 80.0,
-              height: 14.0
-            },
+            coordenadas: { x: 10.0, y: 40.0, width: 80.0, height: 14.0 },
             textoExtraidoOcr: 'CUPS 890201 Consulta Medicina General Urgencias. Valor liquidado en orden: $85.000 COP.',
             etiquetaCampo: 'Liquidación Tarifaria Excedida',
             colorBorde: '#EF4444',
-            mensajeHallazgo: 'Diferencia no pactada de $20.000 COP sobre la tarifa SOAT 2026 Anexo 1.'
+            mensajeHallazgo: 'Diferencia no pactada de $20.000 COP sobre la tarifa de contrato.'
+          },
+          {
+            id: 'BB-ESC02-02',
+            documentoId: 'DOC-HOSP-LAB',
+            pagina: 2,
+            coordenadas: { x: 10.0, y: 35.0, width: 80.0, height: 12.0 },
+            textoExtraidoOcr: 'Hemograma IV validado por bacteriólogo a las 15:20 hrs. Valores dentro de rango estándar.',
+            etiquetaCampo: 'Tarifa Laboratorio Excedida',
+            colorBorde: '#F59E0B',
+            mensajeHallazgo: 'Validación técnica presente. Aplica tarifa contratada de $30.000 COP.'
+          },
+          {
+            id: 'BB-ESC02-03',
+            documentoId: 'DOC-HOSP-EPI',
+            pagina: 4,
+            coordenadas: { x: 10.0, y: 48.0, width: 80.0, height: 16.0 },
+            textoExtraidoOcr: '...se administra O2 continuo por cánula nasal durante 4 hrs (14:30 - 18:30). Paciente satura 96% al aire ambiente...',
+            etiquetaCampo: 'Tiempo O2 Incompleto',
+            colorBorde: '#3B82F6',
+            mensajeHallazgo: 'Soporte documenta 4 horas de suministro vs 8 horas liquidadas.'
           }
         ],
         explicacionIaRag: {
-          resumenEjecutivo: 'Se detecta un cobro de $85.000 COP en la línea 1 (CUPS 890201), sobrepasando en $20.000 COP la tarifa pactada ($65.000 COP).',
-          sustentoNormativo: 'Res. 2284/2023 Anexo 3 - Causal TA0201 (Causal 312 Res. 3047): "Tarifa superior a la pactada en el acuerdo de voluntades".',
-          fuentesCite: [
-            'Manual Único de Devoluciones y Glosas - Res. 2284/2023 § Anexo Técnico 3',
-            'Matriz de Tarifas Contrato CTR-2026-SOS-SANVICENTE'
-          ]
+          resumenEjecutivo: 'Cuenta médica con 3 hallazgos: 2 excesos de tarifa en urgencias y laboratorio, y soporte clínico de oxigenoterapia por la mitad del tiempo liquidado.',
+          sustentoNormativo: 'Resolución 2284 de 2023 Anexo 3 - Causales TA0201 y CL0102.',
+          fuentesCite: ['Resolución 2284 de 2023', 'Contrato CTR-2026-SOS-SANVICENTE']
         }
       },
+
+      // ----------------------------------------------------------------------
+      // ESC-03: Centro Médico El Poblado (MÚLTIPLES GLOSAS: 2 GLOSAS)
+      // ----------------------------------------------------------------------
       {
         id: 'ESC-03',
         nur: 'NUR-2026-8849203',
@@ -1183,44 +1971,129 @@ export class SplitScreenComponent implements OnInit {
             valorTarifaPactadaCop: 0.0,
             valorGlosaSugeridaCop: 280000.0,
             estadoItem: 'GLOSADO_SUGERIDO',
-            observacionIa: 'Facturado bajo póliza SOAT/ECAT sin adjuntar el formulario obligatorio FURIPS.'
+            observacionIa: 'Facturado bajo póliza SOAT/ECAT sin adjuntar FURIPS.'
+          },
+          {
+            linea: 2,
+            codigoCups: '890701',
+            descripcionCups: 'Consulta de control por especialista quirúrgico',
+            cantidad: 1,
+            valorFacturadoCop: 130000.0,
+            valorTarifaPactadaCop: 130000.0,
+            valorGlosaSugeridaCop: 0.0,
+            estadoItem: 'CONFORME',
+            observacionIa: 'Autorización AUT-2026-99201 ubicada en pág. 2 de epicrisis.'
+          }
+        ],
+        glosasFactura: [
+          {
+            id: 'GL-01',
+            lineaItem: 1,
+            codigoCups: '902210',
+            descripcionItem: 'Hemograma IV y Perfil de Trauma Completo',
+            tituloCorto: 'Ausencia de Formulario Único FURIPS obligatorio',
+            causal: {
+              codigoManualUnico: 'DE1601',
+              codigoRes3047: '204',
+              familia: 'SO',
+              descripcion: 'Ausencia de FURIPS en atención SOAT'
+            },
+            valorFacturadoItemCop: 280000.0,
+            valorTarifaPactadaItemCop: 0.0,
+            valorGlosaInicialCop: 280000.0,
+            valorGlosaSugeridaIaCop: 280000.0,
+            valorGlosaDefinitivaCop: 280000.0,
+            veredictoIa: 'RATIFICAR_TOTAL',
+            confianzaIaPorcentaje: 98.5,
+            causaDetalle: 'Atención clasificada como accidente de tránsito sin incluir el formulario oficial FURIPS exigido por el Decreto 780 de 2016.',
+            solucionSugeridaIa: 'Ratificar la glosa en su totalidad ($280.000 COP). Sin FURIPS no procede recobro con cargo a la subcuenta ECAT.',
+            sustentoNormativo: 'Decreto 780 de 2016 y Res. 2284 de 2023 Causal DE1601 / Causal 204.',
+            fuentesCite: ['Decreto 780 de 2016', 'Resolución 2284 de 2023'],
+            borradorRespuestaIa: 'Se ratifica glosa por $280.000 COP por omisión de formulario obligatorio FURIPS en atención de accidente de tránsito.',
+            citasSoporte: [
+              {
+                etiqueta: 'Epicrisis Atención Inicial (pág. 1)',
+                documentoId: 'DOC-8849203-EPI',
+                pagina: 1,
+                boundingBoxId: 'BB-ESC03-01',
+                extractoCita: 'Ingreso por Urgencias derivado de Accidente de Tránsito (Atención SOAT). No consta radicado FURIPS.'
+              }
+            ],
+            documentosRelacionadosIds: ['DOC-8849203-EPI'],
+            estadoGlosa: 'PENDIENTE'
+          },
+          {
+            id: 'GL-02',
+            lineaItem: 2,
+            codigoCups: '890701',
+            descripcionItem: 'Consulta de Control por Especialista Quirúrgico',
+            tituloCorto: 'Interconsulta médica: Autorización validada en expediente',
+            causal: {
+              codigoManualUnico: 'AU0101',
+              codigoRes3047: '501',
+              familia: 'AU',
+              descripcion: 'Servicio no autorizado previamente por la aseguradora'
+            },
+            valorFacturadoItemCop: 130000.0,
+            valorTarifaPactadaItemCop: 130000.0,
+            valorGlosaInicialCop: 130000.0,
+            valorGlosaSugeridaIaCop: 0.0,
+            valorGlosaDefinitivaCop: 0.0,
+            veredictoIa: 'LEVANTAR_TOTAL',
+            confianzaIaPorcentaje: 91.0,
+            causaDetalle: 'Se objetó inicialmente por presunta falta de autorización previa en el paquete digital.',
+            solucionSugeridaIa: 'En la página 2 de la Epicrisis consta la autorización telefónica AUT-2026-99201 emitida por la EPS. Procede levantar la glosa al 100%.',
+            sustentoNormativo: 'Resolución 2284 de 2023 Causal AU0101 & Decreto 441 de 2022.',
+            fuentesCite: ['Resolución 2284 de 2023', 'Decreto 441 de 2022'],
+            borradorRespuestaIa: 'Se levanta la glosa al 100% ($130.000 COP) al verificarse autorización válida AUT-2026-99201 en el expediente clínico.',
+            citasSoporte: [
+              {
+                etiqueta: 'Epicrisis / Autorización (pág. 2)',
+                documentoId: 'DOC-8849203-EPI',
+                pagina: 2,
+                boundingBoxId: 'BB-ESC03-02',
+                extractoCita: 'Autorización telefónica EPS: AUT-2026-99201 para valoración por traumatología y ortopedia.'
+              }
+            ],
+            documentosRelacionadosIds: ['DOC-8849203-EPI'],
+            estadoGlosa: 'PENDIENTE'
           }
         ],
         soportesDocumentales: [
-          {
-            id: 'DOC-8849203-EPI',
-            tipoDocumento: 'EPICRISIS_PDF',
-            nombreArchivo: 'Epicrisis_MariaCamilaTorres.pdf',
-            urlMock: 'assets/soportes/Epicrisis_MariaCamilaTorres.pdf',
-            totalPaginas: 2
-          }
+          { id: 'DOC-8849203-EPI', tipoDocumento: 'EPICRISIS_PDF', nombreArchivo: 'Epicrisis_SOAT.pdf', urlMock: 'assets/soportes/Epicrisis_SOAT.pdf', totalPaginas: 2 }
         ],
         boundingBoxes: [
           {
             id: 'BB-ESC03-01',
             documentoId: 'DOC-8849203-EPI',
             pagina: 1,
-            coordenadas: {
-              x: 8.0,
-              y: 50.0,
-              width: 84.0,
-              height: 16.0
-            },
+            coordenadas: { x: 8.0, y: 46.0, width: 84.0, height: 16.0 },
             textoExtraidoOcr: 'Ingreso por Urgencias derivado de Accidente de Tránsito (Atención SOAT). No consta radicado FURIPS.',
             etiquetaCampo: 'Soporte FURIPS Faltante',
-            colorBorde: '#F59E0B',
-            mensajeHallazgo: 'Formulario FURIPS exigido por el Decreto 780 de 2016.'
+            colorBorde: '#EF4444',
+            mensajeHallazgo: 'Formulario FURIPS obligatorio exigido por el Decreto 780 de 2016.'
+          },
+          {
+            id: 'BB-ESC03-02',
+            documentoId: 'DOC-8849203-EPI',
+            pagina: 2,
+            coordenadas: { x: 8.0, y: 55.0, width: 84.0, height: 14.0 },
+            textoExtraidoOcr: 'Autorización telefónica EPS: AUT-2026-99201 para valoración por traumatología y ortopedia.',
+            etiquetaCampo: 'Autorización Ubicada',
+            colorBorde: '#10B981',
+            mensajeHallazgo: 'Autorización intrahospitalaria de urgencias confirmada en folio.'
           }
         ],
         explicacionIaRag: {
-          resumenEjecutivo: 'Se identifica recobro de pruebas de perfil de trauma ($280.000 COP) en evento de tránsito sin incluir anexo obligatorio FURIPS.',
-          sustentoNormativo: 'Res. 2284/2023 Anexo 3 - Causal DE1601 / Causal 204: "Soporte faltante / Formulario FURIPS no adjunto".',
-          fuentesCite: [
-            'Decreto 780 de 2016 - Regulaciones SOAT/ECAT',
-            'Resolución 2284 de 2023 - Manual Único de Glosas'
-          ]
+          resumenEjecutivo: 'Identificada falta de FURIPS en evento de tránsito ($280.000 COP) y confirmada autorización médica para la interconsulta ($130.000 COP).',
+          sustentoNormativo: 'Decreto 780 de 2016 & Res. 2284/2023 Anexo 3.',
+          fuentesCite: ['Decreto 780 de 2016', 'Resolución 2284 de 2023']
         }
       },
+
+      // ----------------------------------------------------------------------
+      // ESC-04: CUV Ausente (Rechazo Inmediato Res. 0948/2026 Art. 3.1)
+      // ----------------------------------------------------------------------
       {
         id: 'ESC-04',
         nur: null,
@@ -1274,23 +2147,44 @@ export class SplitScreenComponent implements OnInit {
           descripcion: 'Rechazo de radicación por falta de CUV obligatorio'
         },
         itemsFacturados: [],
-        soportesDocumentales: [
+        glosasFactura: [
           {
-            id: 'DOC-8849204-XML',
-            tipoDocumento: 'FEV_XML',
-            nombreArchivo: 'FEV-771920_Versalles.xml',
-            urlMock: 'assets/soportes/FEV-771920_Versalles.xml',
-            totalPaginas: 1
+            id: 'GL-01',
+            lineaItem: 1,
+            codigoCups: 'DE0000',
+            descripcionItem: 'Expediente electrónico sin CUV MinSalud',
+            tituloCorto: 'Rechazo de radicación en ventanilla por falta de CUV',
+            causal: {
+              codigoManualUnico: 'DE0000',
+              codigoRes3047: '000',
+              familia: 'RECHAZO_RADICACION',
+              descripcion: 'CUV ausente ante Mecanismo Único de MinSalud'
+            },
+            valorFacturadoItemCop: 3850000.0,
+            valorTarifaPactadaItemCop: 0.0,
+            valorGlosaInicialCop: 3850000.0,
+            valorGlosaSugeridaIaCop: 3850000.0,
+            valorGlosaDefinitivaCop: 3850000.0,
+            veredictoIa: 'RATIFICAR_TOTAL',
+            confianzaIaPorcentaje: 100.0,
+            causaDetalle: 'Resolución 0948 de 2026: Prohibición expresa de radicar paquetes sin CUV previo y validado.',
+            solucionSugeridaIa: 'Generar constancia de rechazo inmediato. No se generan radicados ni corren términos para la EPS.',
+            sustentoNormativo: 'Resolución 0948 de 2026 Art. 3.1.',
+            fuentesCite: ['Resolución 0948 de 2026'],
+            borradorRespuestaIa: 'Expediente no radicado por falta de CUV válido ante MinSalud.',
+            citasSoporte: [],
+            documentosRelacionadosIds: ['DOC-8849204-XML'],
+            estadoGlosa: 'PENDIENTE'
           }
+        ],
+        soportesDocumentales: [
+          { id: 'DOC-8849204-XML', tipoDocumento: 'FEV_XML', nombreArchivo: 'FEV-771920.xml', urlMock: 'assets/soportes/FEV-771920.xml', totalPaginas: 1 }
         ],
         boundingBoxes: [],
         explicacionIaRag: {
-          resumenEjecutivo: 'El archivo FEV no cuenta con Código Único de Validación (CUV) reportado ante el Mecanismo Único de Validación de MinSalud.',
-          sustentoNormativo: 'Resolución 0948 de 2026 - Artículo 3.1: Prohibición expresa de radicación de paquetes sin validación CUV.',
-          fuentesCite: [
-            'Resolución 0948 de 2026 - Artículo 3.1',
-            'Resolución 2284 de 2023 - Artículo 7'
-          ]
+          resumenEjecutivo: 'Resolución 0948 de 2026: Prohibición expresa de radicar paquetes sin CUV previo y validado ante MinSalud.',
+          sustentoNormativo: 'Resolución 0948 de 2026 Art. 3.1.',
+          fuentesCite: ['Resolución 0948 de 2026 Art. 3.1']
         },
         motivoRechazoSinNur: {
           causal: 'FALTA_CUV_MINSALUD',
@@ -1300,6 +2194,10 @@ export class SplitScreenComponent implements OnInit {
           fechaRechazo: '2026-10-31T09:05:00-05:00'
         }
       },
+
+      // ----------------------------------------------------------------------
+      // ESC-05: Devolución 5-5-5 (Res. 2284 Art. 6)
+      // ----------------------------------------------------------------------
       {
         id: 'ESC-05',
         nur: 'NUR-2026-9932140',
@@ -1335,7 +2233,7 @@ export class SplitScreenComponent implements OnInit {
           diasHabilesRestantes: 2,
           nivelRiesgo: 'ROJO',
           colorHex: '#EF4444',
-          mensajeNormativo: 'Devolución formulada: 2 días restantes para vencimiento del reloj de 5 días (Res. 2284 art. 6).'
+          mensajeNormativo: 'Resolución 2284 de 2023: Ciclo taxativo de devoluciones 5-5-5 y preclusión formal de términos'
         },
         resumenFinanciero: {
           valorFacturadoCop: 850000.0,
@@ -1350,7 +2248,7 @@ export class SplitScreenComponent implements OnInit {
           codigoManualUnico: 'DE4401',
           codigoRes3047: '104',
           familia: 'DEVOLUCIONES',
-          descripcion: 'El prestador no hace parte de la red de la EPS o número de contrato errado (subsanable)'
+          descripcion: 'El prestador no hace parte de la red de la EPS o contrato no vigente'
         },
         itemsFacturados: [
           {
@@ -1362,53 +2260,47 @@ export class SplitScreenComponent implements OnInit {
             valorTarifaPactadaCop: 0.0,
             valorGlosaSugeridaCop: 150000.0,
             estadoItem: 'GLOSADO_SUGERIDO',
-            observacionIa: 'Facturado bajo acuerdo CTR-2025-099 no vigente.'
-          },
+            observacionIa: 'Contrato expirado.'
+          }
+        ],
+        glosasFactura: [
           {
-            linea: 2,
-            codigoCups: '931000',
-            descripcionCups: 'Terapia Física Integral (Paquete 10 sesiones)',
-            cantidad: 1,
-            valorFacturadoCop: 700000.0,
-            valorTarifaPactadaCop: 0.0,
-            valorGlosaSugeridaCop: 700000.0,
-            estadoItem: 'GLOSADO_SUGERIDO',
-            observacionIa: 'Paquete de rehabilitación física objetado por terminación de contrato.'
+            id: 'GL-01',
+            lineaItem: 1,
+            codigoCups: '890201',
+            descripcionItem: 'Consulta y Terapias Fisiatría',
+            tituloCorto: 'Causal Taxativa DE4401 - Contrato Vencido',
+            causal: {
+              codigoManualUnico: 'DE4401',
+              codigoRes3047: '104',
+              familia: 'DEVOLUCIONES',
+              descripcion: 'Contrato no vigente con la EPS'
+            },
+            valorFacturadoItemCop: 850000.0,
+            valorTarifaPactadaItemCop: 0.0,
+            valorGlosaInicialCop: 850000.0,
+            valorGlosaSugeridaIaCop: 850000.0,
+            valorGlosaDefinitivaCop: 850000.0,
+            veredictoIa: 'RATIFICAR_TOTAL',
+            confianzaIaPorcentaje: 98.5,
+            causaDetalle: 'Resolución 2284 de 2023: Ciclo taxativo de devoluciones 5-5-5 y preclusión formal de términos.',
+            solucionSugeridaIa: 'Formular devolución antes de preclusión en día 5 hábil.',
+            sustentoNormativo: 'Resolución 2284 de 2023 Art. 6.',
+            fuentesCite: ['Resolución 2284 de 2023 Art. 6'],
+            borradorRespuestaIa: 'Devolución formulada bajo causal DE4401 por terminación de contrato.',
+            citasSoporte: [],
+            documentosRelacionadosIds: ['DOC-9932140-CTR'],
+            estadoGlosa: 'PENDIENTE'
           }
         ],
         soportesDocumentales: [
-          {
-            id: 'DOC-9932140-CTR',
-            tipoDocumento: 'CONTRATO_PDF',
-            nombreArchivo: 'Contrato_Farallones_2025.pdf',
-            urlMock: 'assets/soportes/Contrato_Farallones_2025.pdf',
-            totalPaginas: 3
-          }
+          { id: 'DOC-9932140-CTR', tipoDocumento: 'CONTRATO_PDF', nombreArchivo: 'Contrato_Farallones.pdf', urlMock: 'assets/soportes/Contrato_Farallones.pdf', totalPaginas: 3 }
         ],
-        boundingBoxes: [
-          {
-            id: 'BB-ESC05-01',
-            documentoId: 'DOC-9932140-CTR',
-            pagina: 1,
-            coordenadas: {
-              x: 10.0,
-              y: 65.0,
-              width: 80.0,
-              height: 12.0
-            },
-            textoExtraidoOcr: 'Vigencia contractual: Desde el 01 de enero de 2025 hasta el 31 de diciembre de 2025.',
-            etiquetaCampo: 'Cláusula de Vigencia Expirada',
-            colorBorde: '#EF4444',
-            mensajeHallazgo: 'Contrato no prorrogado para el período de atención octubre 2026.'
-          }
-        ],
+        boundingBoxes: [],
         explicacionIaRag: {
-          resumenEjecutivo: 'El prestador facturó bajo el contrato CTR-2025-099 el cual expiró el 31-dic-2025. Procede causal taxativa de devolución DE4401.',
-          sustentoNormativo: 'Resolución 2284 de 2023 - Anexo Técnico 3 Numeral 1.2 Causal DE4401 y Artículo 6 (Ciclo 5-5-5).',
-          fuentesCite: [
-            'Resolución 2284 de 2023 - Artículo 6',
-            'Resolución 2284 de 2023 - Anexo Técnico 3 Numeral 1.2 Causal DE4401'
-          ]
+          resumenEjecutivo: 'Resolución 2284 de 2023: Ciclo taxativo de devoluciones 5-5-5 y preclusión formal de términos.',
+          sustentoNormativo: 'Resolución 2284 de 2023 Art. 6.',
+          fuentesCite: ['Resolución 2284 de 2023 Art. 6']
         },
         devolucion5Dias: {
           causalDe: 'DE4401',
@@ -1418,6 +2310,10 @@ export class SplitScreenComponent implements OnInit {
           causalDescripcion: 'Contrato no vigente con la EPS'
         }
       },
+
+      // ----------------------------------------------------------------------
+      // ESC-06: Aceptación Tácita Ley 1438 (20 Días Perimidos)
+      // ----------------------------------------------------------------------
       {
         id: 'ESC-06',
         nur: 'NUR-2026-6612098',
@@ -1453,7 +2349,7 @@ export class SplitScreenComponent implements OnInit {
           diasHabilesRestantes: 0,
           nivelRiesgo: 'VERDE',
           colorHex: '#EAB308',
-          mensajeNormativo: 'ACEPTACIÓN TÁCITA LEGAL: Vencieron los 20 días hábiles sin formulación de glosa (Ley 1438 art. 57).'
+          mensajeNormativo: 'Ley 1438 de 2011 Art. 57 y Decreto 441 de 2022 Art. 2.5.3.4.4.4: Título Valor por Aceptación Tácita tras 20 días hábiles'
         },
         resumenFinanciero: {
           valorFacturadoCop: 2150000.0,
@@ -1468,7 +2364,7 @@ export class SplitScreenComponent implements OnInit {
           codigoManualUnico: 'AC0000',
           codigoRes3047: '000',
           familia: 'ACEPTACION_TACITA',
-          descripcion: 'Factura aceptada tácitamente por preclusión de términos de glosa'
+          descripcion: 'Factura aceptada tácitamente por preclusión de términos'
         },
         itemsFacturados: [
           {
@@ -1480,37 +2376,55 @@ export class SplitScreenComponent implements OnInit {
             valorTarifaPactadaCop: 150000.0,
             valorGlosaSugeridaCop: 0.0,
             estadoItem: 'CONFORME',
-            observacionIa: 'Factura aceptada por perención legal de términos.'
-          },
+            observacionIa: 'Aceptación tácita legal.'
+          }
+        ],
+        glosasFactura: [
           {
-            linea: 2,
-            codigoCups: '881201',
-            descripcionCups: 'Ecocardiograma Transtorácico Modo M y 2D',
-            cantidad: 1,
-            valorFacturadoCop: 2000000.0,
-            valorTarifaPactadaCop: 2000000.0,
-            valorGlosaSugeridaCop: 0.0,
-            estadoItem: 'CONFORME',
-            observacionIa: 'Factura aceptada por perención legal de términos.'
+            id: 'GL-01',
+            lineaItem: 1,
+            codigoCups: '890201',
+            descripcionItem: 'Factura Completa Aceptada Tácitamente',
+            tituloCorto: 'Ley 1438 de 2011 Art. 57 - Título Valor por Aceptación Tácita tras 20 días hábiles',
+            causal: {
+              codigoManualUnico: 'AC0000',
+              codigoRes3047: '000',
+              familia: 'ACEPTACION_TACITA',
+              descripcion: 'Aceptación tácita por perención de términos'
+            },
+            valorFacturadoItemCop: 2150000.0,
+            valorTarifaPactadaItemCop: 2150000.0,
+            valorGlosaInicialCop: 0.0,
+            valorGlosaSugeridaIaCop: 0.0,
+            valorGlosaDefinitivaCop: 0.0,
+            veredictoIa: 'APROBAR_ITEM',
+            confianzaIaPorcentaje: 100.0,
+            causaDetalle: 'Ley 1438 de 2011 Art. 57 y Decreto 441 de 2022 Art. 2.5.3.4.4.4: Título Valor por Aceptación Tácita tras 20 días hábiles sin formulación de glosa.',
+            solucionSugeridaIa: 'Despachar orden de pago ejecutiva a tesorería EPS.',
+            sustentoNormativo: 'Ley 1438 de 2011 Art. 57 y Decreto 441 de 2022.',
+            fuentesCite: ['Ley 1438 de 2011 Art. 57'],
+            borradorRespuestaIa: 'Título Valor constituido por ministerio de la ley.',
+            citasSoporte: [],
+            documentosRelacionadosIds: ['DOC-6612098-TV'],
+            estadoGlosa: 'RESUELTA',
+            decisionAplicada: {
+              tipo: 'ACEPTADA_IA',
+              etiqueta: 'Título Valor Ejecutivo',
+              valorFinalGlosaCop: 0,
+              argumentoFinal: 'Aceptación tácita legal por perención de 20 días hábiles.',
+              auditor: 'Dr. Juan Martínez',
+              timestamp: '2026-10-28T08:00:00-05:00'
+            }
           }
         ],
         soportesDocumentales: [
-          {
-            id: 'DOC-6612098-TV',
-            tipoDocumento: 'CERTIFICADO_TITULO_VALOR',
-            nombreArchivo: 'Certificado_Titulo_Valor_FEV110298.pdf',
-            urlMock: 'assets/soportes/Certificado_Titulo_Valor_FEV110298.pdf',
-            totalPaginas: 1
-          }
+          { id: 'DOC-6612098-TV', tipoDocumento: 'CERTIFICADO_TITULO_VALOR', nombreArchivo: 'Certificado_Titulo_Valor.pdf', urlMock: 'assets/soportes/TituloValor.pdf', totalPaginas: 1 }
         ],
         boundingBoxes: [],
         explicacionIaRag: {
-          resumenEjecutivo: 'Han transcurrido 22 días hábiles desde la emisión del NUR sin que la EPS notificara glosas. La factura queda constituida en Título Valor ejecutivo.',
-          sustentoNormativo: 'Ley 1438 de 2011 - Artículo 57 y Decreto 441 de 2022 - Artículo 2.5.3.4.4.4.',
-          fuentesCite: [
-            'Ley 1438 de 2011 - Artículo 57',
-            'Decreto 441 de 2022 - Artículo 2.5.3.4.4.4'
-          ]
+          resumenEjecutivo: 'Ley 1438 de 2011 Art. 57 y Decreto 441 de 2022 Art. 2.5.3.4.4.4: Título Valor por Aceptación Tácita tras 20 días hábiles.',
+          sustentoNormativo: 'Ley 1438 de 2011 Art. 57.',
+          fuentesCite: ['Ley 1438 de 2011 Art. 57']
         },
         aceptacionTacitaLey1438: {
           fechaRadicacion: '2026-09-28T10:15:00-05:00',
@@ -1524,197 +2438,5 @@ export class SplitScreenComponent implements OnInit {
 
     this.casos.set(casosSemilla);
     this.seleccionarCaso('ESC-02');
-  }
-
-  // Métodos de selección y control UI
-  seleccionarCaso(id: string): void {
-    this.casoActivoId.set(id);
-    this.auditoriaService.setScenario(id);
-    const caso = this.casos().find(c => c.id === id);
-    if (caso && caso.soportesDocumentales && caso.soportesDocumentales.length > 0) {
-      this.documentoActivoId.set(caso.soportesDocumentales[0].id);
-    }
-    this.modoSobreescritura.set(false);
-    this.justificacionTexto.set('');
-  }
-
-  seleccionarDocumento(docId: string): void {
-    this.documentoActivoId.set(docId);
-  }
-
-  cambiarZoom(delta: number): void {
-    const nuevo = Math.min(Math.max(this.zoomNivel() + delta, 60), 160);
-    this.zoomNivel.set(nuevo);
-  }
-
-  toggleBoundingBoxes(): void {
-    this.mostrarBoundingBoxes.set(!this.mostrarBoundingBoxes());
-  }
-
-  onSugerirPertinenciaIa(event: Event): void {
-    this.sugerirPertinenciaIa.set((event.target as HTMLInputElement).checked);
-  }
-
-  reiniciarCasosDemo(): void {
-    this.cargarCasosSemillaMock();
-    this.filtroFamilia.set('TODAS');
-  }
-
-  // Acción HitL: Ratificación en 1 Clic (F05 / US-12)
-  ejecutarRatificacion1Clic(): void {
-    if (this.ocultarSugerenciaPertinencia()) {
-      return;
-    }
-    const caso = this.casoActivo();
-    const auditor = this.auditorActual;
-
-    const list = this.casos().map(c => {
-      if (c.id === caso.id) {
-        const nuevoEstado = c.resumenFinanciero.valorGlosaSugeridaCop > 0 ? 'GLOSADA_NOTIFICADA' : 'APROBADA_NOTIFICADA';
-        return {
-          ...c,
-          estadoAuditoria: nuevoEstado as any,
-          registroDecisionHitL: {
-            auditor: auditor.nombre,
-            registroMedico: auditor.registroMedico,
-            timestamp: new Date().toISOString(),
-            tipoAccion: 'RATIFICACION_1CLIC' as const,
-            glosaFinalCop: c.resumenFinanciero.valorGlosaSugeridaCop
-          }
-        };
-      }
-      return c;
-    });
-
-    this.casos.set(list);
-  }
-
-  // Acción HitL: Sobreescritura Forense (F06 / US-13)
-  activarModoSobreescritura(): void {
-    this.montoGlosaSobreescrita.set(this.casoActivo().resumenFinanciero.valorGlosaSugeridaCop);
-    this.justificacionTexto.set('');
-    this.modoSobreescritura.set(true);
-  }
-
-  cancelarSobreescritura(): void {
-    this.modoSobreescritura.set(false);
-  }
-
-  guardarSobreescrituraForense(): void {
-    if (this.justificacionTexto().length < 50) return;
-
-    const caso = this.casoActivo();
-    const auditor = this.auditorActual;
-    const monto = this.montoGlosaSobreescrita();
-
-    const list = this.casos().map(c => {
-      if (c.id === caso.id) {
-        return {
-          ...c,
-          estadoAuditoria: 'SOBREESCRITO_FORENSE' as const,
-          registroDecisionHitL: {
-            auditor: auditor.nombre,
-            registroMedico: auditor.registroMedico,
-            timestamp: new Date().toISOString(),
-            tipoAccion: 'SOBREESCRITURA_FORENSE' as const,
-            glosaFinalCop: monto,
-            justificacionMedica: this.justificacionTexto()
-          }
-        };
-      }
-      return c;
-    });
-
-    this.casos.set(list);
-    this.modoSobreescritura.set(false);
-  }
-
-  // Acciones normativas avanzadas (F09, F10, F11)
-  descargarConstanciaRechazo(): void {
-    alert('Descargando Constancia Oficial de Rechazo Inmediato por Falta de CUV (Res. 0948/2026 Art. 3.1) en formato PDF.');
-  }
-
-  simularPreclusionDevolucion(): void {
-    const list = this.casos().map(c => {
-      if (c.id === 'ESC-05') {
-        return {
-          ...c,
-          estadoAuditoria: 'DEVOLUCION_PRECLUIDA' as const,
-          semaforo: {
-            ...c.semaforo,
-            diasHabilesRestantes: 0,
-            mensajeNormativo: 'PRECLUSIÓN DE DEVOLUCIÓN: Superados 5 días hábiles. Debe auditarse por glosas.'
-          }
-        };
-      }
-      return c;
-    });
-    this.casos.set(list);
-  }
-
-  simularRespuestaIps(tipo: 'RE9701' | 'RE9601'): void {
-    const list = this.casos().map(c => {
-      if (c.id === 'ESC-05') {
-        if (tipo === 'RE9701') {
-          return {
-            ...c,
-            estadoAuditoria: 'APROBADA_NOTIFICADA' as const,
-            semaforo: {
-              ...c.semaforo,
-              mensajeNormativo: 'IPS Aceptó devolución (RE9701): Se expedirá Nota Crédito y nuevo NUR.'
-            }
-          };
-        } else {
-          return {
-            ...c,
-            estadoAuditoria: 'DEVOLUCION_CONTROVERTIDA' as const,
-            semaforo: {
-              ...c.semaforo,
-              mensajeNormativo: 'IPS Controvirtió devolución (RE9601): Continúa sobre el mismo NUR.'
-            }
-          };
-        }
-      }
-      return c;
-    });
-    this.casos.set(list);
-  }
-
-  despacharPagoAceptacionTacita(): void {
-    const list = this.casos().map(c => {
-      if (c.id === 'ESC-06') {
-        return {
-          ...c,
-          aceptacionTacitaLey1438: {
-            ...c.aceptacionTacitaLey1438!,
-            estadoDespachoPago: 'DESPACHADO_A_CORE_EPS' as const
-          }
-        };
-      }
-      return c;
-    });
-    this.casos.set(list);
-    alert('La Factura FEV-110298 (Título Valor TV-SOS-2026-009941) ha sido despachada formalmente al Core de Tesorería de SOS EPS para giro directo.');
-  }
-
-  // Helper de estilos para el Semáforo Dinámico
-  obtenerEstiloSemaforoBadge(nivel: 'VERDE' | 'AMARILLO' | 'ROJO'): string {
-    switch (nivel) {
-      case 'ROJO':
-        return 'bg-red-50 text-red-800 border border-red-200';
-      case 'AMARILLO':
-        return 'bg-amber-50 text-amber-900 border border-amber-200';
-      case 'VERDE':
-        return 'bg-emerald-50 text-emerald-800 border border-emerald-200';
-    }
-  }
-
-  // Atajos de teclado para la demostración
-  @HostListener('window:keydown', ['$event'])
-  manejarAtajosTeclado(event: KeyboardEvent): void {
-    if (event.ctrlKey && event.shiftKey && event.key.toUpperCase() === 'R') {
-      event.preventDefault();
-      this.reiniciarCasosDemo();
-    }
   }
 }
