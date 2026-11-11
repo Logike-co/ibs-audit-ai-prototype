@@ -141,7 +141,7 @@ export interface CitaSoporteGlosa {
 }
 
 export interface DecisionGlosa {
-  tipo: 'ACEPTADA_IA' | 'AJUSTADA_AUDITOR' | 'MANTENIDA_TOTAL' | 'ESCALADA_ESPECIALISTA';
+  tipo: 'ACEPTADA_IA' | 'AJUSTADA_AUDITOR' | 'MANTENIDA_TOTAL';
   etiqueta: string;
   valorFinalGlosaCop: number;
   argumentoFinal: string;
@@ -170,7 +170,7 @@ export interface GlosaFactura {
   borradorRespuestaIa: string;
   citasSoporte: CitaSoporteGlosa[];
   documentosRelacionadosIds: string[];
-  estadoGlosa: 'PENDIENTE' | 'RESUELTA' | 'ESCALADA';
+  estadoGlosa: 'PENDIENTE' | 'RESUELTA';
   decisionAplicada?: DecisionGlosa;
 }
 
@@ -401,10 +401,7 @@ export interface CasoAuditoria {
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                     <span>✓ Resuelta</span>
                   </span>
-                  <span *ngIf="glosa.estadoGlosa === 'ESCALADA'" class="inline-flex items-center gap-1 text-[10px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">
-                    <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                    <span>⚑ Escalada</span>
-                  </span>
+
                 </div>
 
                 <span class="font-mono text-[10px] text-slate-500">Ít. {{ glosa.lineaItem }} · {{ glosa.codigoCups }}</span>
@@ -1066,7 +1063,7 @@ export class SplitScreenComponent implements OnInit {
     const todas = this.glosasDeFactura();
     const f = this.filtroEstadoGlosa();
     if (f === 'PENDIENTES') return todas.filter(g => g.estadoGlosa === 'PENDIENTE');
-    if (f === 'RESUELTAS') return todas.filter(g => g.estadoGlosa === 'RESUELTA' || g.estadoGlosa === 'ESCALADA');
+    if (f === 'RESUELTAS') return todas.filter(g => g.estadoGlosa === 'RESUELTA');
     return todas;
   });
 
@@ -1080,7 +1077,7 @@ export class SplitScreenComponent implements OnInit {
     const todas = this.glosasDeFactura();
     const total = todas.length;
     if (total === 0) return { total: 0, resueltas: 0, pendientes: 0, porcentaje: 100, completado: true };
-    const resueltas = todas.filter(g => g.estadoGlosa === 'RESUELTA' || g.estadoGlosa === 'ESCALADA').length;
+    const resueltas = todas.filter(g => g.estadoGlosa === 'RESUELTA').length;
     const pendientes = total - resueltas;
     const porcentaje = Math.round((resueltas / total) * 100);
     return { total, resueltas, pendientes, porcentaje, completado: resueltas === total };
@@ -1302,38 +1299,7 @@ export class SplitScreenComponent implements OnInit {
     }
   }
 
-  // ACCIÓN 3: ESCALAR GLOSA
-  escalarGlosa(glosa: GlosaFactura): void {
-    const copiaPrevia = JSON.parse(JSON.stringify(glosa));
-    const auditor = this.auditorActual;
 
-    const list = this.casos().map(c => {
-      if (c.id === this.casoActivoId()) {
-        const nuevasGlosas = c.glosasFactura.map(g => {
-          if (g.id === glosa.id) {
-            return {
-              ...g,
-              estadoGlosa: 'ESCALADA' as const,
-              decisionAplicada: {
-                tipo: 'ESCALADA_ESPECIALISTA' as const,
-                etiqueta: 'Escalada a Médico Especialista',
-                valorFinalGlosaCop: g.valorGlosaInicialCop,
-                argumentoFinal: 'Escalada a segundo nivel de auditoría médica para conciliación de pertinencia clínica.',
-                auditor: auditor.nombre,
-                timestamp: new Date().toISOString()
-              }
-            };
-          }
-          return g;
-        });
-        return { ...c, glosasFactura: nuevasGlosas };
-      }
-      return c;
-    });
-
-    this.casos.set(list);
-    this.dispararToastUndo(glosa.id, glosa.id, copiaPrevia);
-  }
 
   // ACCIÓN 4: EDICIÓN INLINE CON BLINDAJE FORENSE
   activarEdicionInline(glosa: GlosaFactura): void {
