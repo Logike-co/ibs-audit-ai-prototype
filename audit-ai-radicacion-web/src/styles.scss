@@ -3,7 +3,7 @@
 @use "flag-icons/sass/flag-icons" with (
   $flag-icons-use-square: false
 );
-@use "../../design-tokens.generated";
+@use "design-tokens.generated";
 
 @font-face {
   font-family: "KoHo";

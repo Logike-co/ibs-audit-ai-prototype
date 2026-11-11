@@ -53,15 +53,29 @@
         <div class="border-2 border-dashed border-blue-300 rounded-lg p-8 bg-blue-50/60 hover:bg-blue-100/50 transition-colors cursor-pointer flex flex-col items-center justify-center relative max-w-xl mx-auto"
              [class.opacity-50]="!tipoContrato"
              [class.pointer-events-none]="!tipoContrato">
-          <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".zip" (change)="archivoSeleccionado = true" [disabled]="!tipoContrato">
+          <input type="file" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".zip" (change)="seleccionarArchivo($event)" [disabled]="!tipoContrato">
           <svg class="h-10 w-10 text-blue-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
           <p class="text-blue-900 font-bold text-sm">Arrastre el paquete .zip de RIPS y facturas aquí</p>
           <p class="text-xs text-blue-600 mt-1">Formatos soportados: .zip estructurado según MinSalud</p>
-          <p *ngIf="archivoSeleccionado" class="mt-3 text-emerald-600 font-bold text-xs bg-emerald-50 px-3 py-1 rounded border border-emerald-200">
-            ✓ Archivo cargado: paquete_radicacion_sos_2026.zip
-          </p>
+
+          <!-- RN-RAD-01: Contador numérico en tiempo real de facturas leídas -->
+          <div *ngIf="archivoSeleccionado" class="mt-4 w-full bg-white p-3 rounded-md border border-blue-200 shadow-xs">
+            <div class="flex items-center justify-between text-xs font-bold text-slate-800 mb-1">
+              <span class="flex items-center gap-1.5 text-blue-900">
+                <span *ngIf="procesandoZip" class="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
+                <span>{{ procesandoZip ? 'Indexando contenido del paquete ZIP...' : '✓ Paquete ZIP indexado correctamente' }}</span>
+              </span>
+              <span class="font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                {{ facturasLeidasCount }} facturas leídas
+              </span>
+            </div>
+            <div class="flex justify-between items-center text-[11px] text-slate-500">
+              <span>paquete_radicacion_sos_2026.zip (14.2 MB)</span>
+              <span>{{ totalItemsLeidosCount }} ítems/soportes clínicos</span>
+            </div>
+          </div>
         </div>
 
         <div class="mt-6 flex justify-center space-x-3">

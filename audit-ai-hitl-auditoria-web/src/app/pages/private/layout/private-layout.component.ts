@@ -5,7 +5,6 @@ import { RouterOutlet, Router, RouterModule, NavigationEnd } from '@angular/rout
 import { filter, map, startWith } from 'rxjs/operators';
 import { AuthService } from '../../../services/auth/auth.service';
 import { AuditoriaService } from '../../../services/auditoria/auditoria.service';
-import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-private-layout',
@@ -84,6 +83,15 @@ import { environment } from '../../../../environments/environment';
             Bandeja de excepciones
             <span class="ml-auto bg-slate-100 text-slate-600 text-[10px] font-mono px-1.5 py-0.5 rounded">
               {{ auditoriaService.bandejaOrdenada().length }}
+            </span>
+          </a>
+          <a routerLink="/devoluciones"
+             routerLinkActive="bg-[color-mix(in_srgb,var(--color-brand)_12%,white)] text-[var(--color-brand)] font-bold border-r-4 border-[var(--color-brand)]"
+             (click)="navegarYCerrar($event, '/devoluciones')"
+             class="px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+            Devoluciones (SCR-14)
+            <span class="ml-auto bg-emerald-100 text-emerald-800 text-[10px] font-mono px-1.5 py-0.5 rounded font-bold">
+              5D
             </span>
           </a>
           <a *ngIf="activeNur"
@@ -251,8 +259,8 @@ import { environment } from '../../../../environments/environment';
               <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-1">Portales</p>
               <div class="flex flex-wrap gap-1">
                 <span class="px-2 py-1 rounded text-[11px] font-bold text-slate-900" style="background-color: var(--color-brand-secondary);">Auditoría</span>
-                <a [href]="portals.radicacion" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Radicación</a>
-                <a [href]="portals.admin" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Admin</a>
+                <a href="http://localhost:4200" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Radicación</a>
+                <a href="http://localhost:4220" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Admin</a>
               </div>
               <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-1">Escenarios</p>
               <button type="button" (click)="irAEscenario('NUR-2026-8849201')"
@@ -291,7 +299,6 @@ export class PrivateLayoutComponent {
   authService = inject(AuthService);
   auditoriaService = inject(AuditoriaService);
   router = inject(Router);
-  readonly portals = environment.portals;
   menuAbierto = signal(true);
 
   mostrarToastReset = false;

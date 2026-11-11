@@ -3,12 +3,7 @@
 // The list of file replacements can be found in `angular.json`.
 
 export const environment = {
-  production: false,
-  portals: {
-    radicacion: 'http://localhost:4200',
-    hitl: 'http://localhost:4210',
-    admin: 'http://localhost:4220',
-  },
+  production: false
 };
 
 /*

@@ -25,6 +25,29 @@ export class RadicacionComponent {
 
   archivoSeleccionado = false;
   tipoContrato: TipoContratoRadicacion | '' = '';
+  
+  // RN-RAD-01 (Mesa 06-Nov): Conteo numérico en tiempo real de facturas leídas
+  procesandoZip = false;
+  facturasLeidasCount = 0;
+  totalItemsLeidosCount = 0;
+
+  seleccionarArchivo(event: Event) {
+    this.archivoSeleccionado = true;
+    this.procesandoZip = true;
+    this.facturasLeidasCount = 0;
+    this.totalItemsLeidosCount = 0;
+
+    // Simulación reactiva progresiva de lectura de ZIP (RN-RAD-01)
+    const interval = setInterval(() => {
+      if (this.facturasLeidasCount < 18) {
+        this.facturasLeidasCount += 3;
+        this.totalItemsLeidosCount += 14;
+      } else {
+        clearInterval(interval);
+        this.procesandoZip = false;
+      }
+    }, 120);
+  }
 
   cargar() {
     if (!this.tipoContrato) {

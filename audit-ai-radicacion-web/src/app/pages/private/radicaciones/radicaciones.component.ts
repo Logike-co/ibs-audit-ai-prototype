@@ -1,11 +1,12 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RadicacionService, FacturaRadicada } from '../../../services/radicacion/radicacion.service';
 
 @Component({
   selector: 'app-radicaciones',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="flex gap-4 min-h-[32rem] items-stretch">
       <aside class="w-56 flex-shrink-0 bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col">
@@ -30,21 +31,51 @@ import { RadicacionService, FacturaRadicada } from '../../../services/radicacion
 
       <section class="flex-1 bg-slate-100 border border-slate-200 rounded-lg overflow-hidden flex flex-col min-w-0">
         <ng-container *ngIf="sel() as r; else vacio">
-          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex justify-between items-start gap-3">
-            <div>
-              <h3 class="text-sm font-bold uppercase tracking-wide text-slate-600">Facturas radicadas y su NUR</h3>
-              <p class="text-[11px] text-slate-500 mt-0.5">
-                {{ r.ips }} · {{ r.cuentas }} facturas ·
-                <span *ngIf="r.estadoPaquete === 'RECHAZO_SIN_NUR'" class="text-rose-700 font-bold">Rechazo sin NUR</span>
-                <span *ngIf="r.estadoPaquete === 'RADICADA'">{{ r.valorTotal | currency:'COP':'symbol':'1.0-0' }}</span>
-              </p>
+          <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-col gap-3">
+            <div class="flex justify-between items-start gap-3">
+              <div>
+                <h3 class="text-sm font-bold uppercase tracking-wide text-slate-600">Facturas radicadas y su NUR</h3>
+                <p class="text-[11px] text-slate-500 mt-0.5">
+                  {{ r.ips }} · {{ facturasFiltradas().length }} de {{ r.cuentas }} facturas mostradas ·
+                  <span *ngIf="r.estadoPaquete === 'RECHAZO_SIN_NUR'" class="text-rose-700 font-bold">Rechazo sin NUR</span>
+                  <span *ngIf="r.estadoPaquete === 'RADICADA'">{{ r.valorTotal | currency:'COP':'symbol':'1.0-0' }}</span>
+                </p>
+              </div>
+              <button *ngIf="r.estadoPaquete === 'RADICADA'"
+                      (click)="service.descargarNurCsv()"
+                      class="text-[11px] font-bold px-3 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 shadow-xs">
+                Exportar NUR (CSV)
+              </button>
             </div>
-            <button *ngIf="r.estadoPaquete === 'RADICADA'"
-                    (click)="service.descargarNurCsv()"
-                    class="text-[11px] font-bold px-3 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50">
-              Exportar NUR (CSV)
-            </button>
+
+            <!-- RN-HIST-01 (Mesa 06-Nov): Barra de Filtros Combinados -->
+            <div class="bg-white p-2.5 rounded-md border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-slate-500 mb-0.5">Filtrar por Factura</label>
+                <input type="text" 
+                       [(ngModel)]="filtroFactura" 
+                       placeholder="Ej: FEV-99823..." 
+                       class="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono" />
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-slate-500 mb-0.5">Filtrar por NUR</label>
+                <input type="text" 
+                       [(ngModel)]="filtroNur" 
+                       placeholder="Ej: NUR-2026..." 
+                       class="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono" />
+              </div>
+              <div>
+                <label class="block text-[10px] uppercase font-bold text-slate-500 mb-0.5">Rango de Fecha</label>
+                <select [(ngModel)]="filtroFecha" class="w-full text-xs border border-slate-300 rounded px-2 py-1 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                  <option value="TODAS">Todas las fechas</option>
+                  <option value="HOY">Radicadas Hoy (10-nov)</option>
+                  <option value="ULT_7D">Últimos 7 días</option>
+                  <option value="MES">Mes en curso (Noviembre)</option>
+                </select>
+              </div>
+            </div>
           </div>
+
           <div class="flex-1 overflow-auto">
             <table class="w-full text-xs">
               <thead class="bg-white text-slate-500 sticky top-0">
@@ -58,7 +89,7 @@ import { RadicacionService, FacturaRadicada } from '../../../services/radicacion
                 </tr>
               </thead>
               <tbody>
-                <tr *ngFor="let f of r.facturas" class="border-t border-slate-200 bg-white"
+                <tr *ngFor="let f of facturasFiltradas()" class="border-t border-slate-200 bg-white"
                     [class.bg-amber-50]="f.tramite === 'GLOSA_AUTO'"
                     [class.bg-rose-50]="f.tramite === 'RECHAZO_SIN_NUR'">
                   <td class="px-3 py-2 font-mono font-semibold text-slate-900">{{ f.factura }}</td>
@@ -72,6 +103,11 @@ import { RadicacionService, FacturaRadicada } from '../../../services/radicacion
                   </td>
                   <td class="px-3 py-2 text-right">
                     <button (click)="pdf(f)" class="text-[var(--color-brand)] hover:underline font-bold">PDF</button>
+                  </td>
+                </tr>
+                <tr *ngIf="facturasFiltradas().length === 0">
+                  <td colspan="6" class="px-4 py-8 text-center text-slate-400 italic">
+                    No se encontraron facturas con los filtros aplicados.
                   </td>
                 </tr>
               </tbody>
@@ -88,6 +124,21 @@ import { RadicacionService, FacturaRadicada } from '../../../services/radicacion
 export class RadicacionesComponent {
   service = inject(RadicacionService);
   sel = this.service.radicacionSeleccionada;
+
+  filtroFactura = '';
+  filtroNur = '';
+  filtroFecha = 'TODAS';
+
+  facturasFiltradas = computed(() => {
+    const radicacion = this.sel();
+    if (!radicacion) return [];
+    
+    return radicacion.facturas.filter(f => {
+      const matchFactura = !this.filtroFactura || f.factura.toLowerCase().includes(this.filtroFactura.toLowerCase());
+      const matchNur = !this.filtroNur || (f.nur && f.nur.toLowerCase().includes(this.filtroNur.toLowerCase()));
+      return matchFactura && matchNur;
+    });
+  });
 
   pdf(f: FacturaRadicada) {
     this.service.descargarCertificadoFactura(f);

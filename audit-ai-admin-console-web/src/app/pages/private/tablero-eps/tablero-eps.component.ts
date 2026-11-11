@@ -82,10 +82,39 @@ const FILAS: FilaTableroEps[] = [
             </span>
           </div>
           <p class="text-xs text-slate-500 mt-1">
-            Vista de demostración con datos ficticios 2025–2026, como la describieron los funcionales el 03-nov:
-            filtro por periodo, regional y régimen; búsqueda por factura; clic abre el detalle de glosa.
+            Vista de demostración con datos ficticios 2025–2026 y <strong>configurador de columnas parametrizables</strong> (Acuerdo 3 Mesa 06-Nov).
           </p>
         </div>
+
+        <!-- Botón Modal Columnas -->
+        <button type="button" 
+                (click)="modalColumnas.set(!modalColumnas())"
+                class="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 flex items-center gap-1.5 text-slate-700 shadow-xs">
+          <span>⚙ Columnas Visibles</span>
+        </button>
+      </div>
+
+      <!-- MODAL / POPOVER CONFIGURADOR DE COLUMNAS -->
+      <div *ngIf="modalColumnas()" class="bg-slate-50 p-3.5 rounded-lg border border-slate-300 shadow-sm flex flex-wrap gap-4 text-xs font-semibold text-slate-700 animate-in fade-in">
+        <span class="text-slate-500 font-bold uppercase tracking-wider self-center text-[10px]">Configurar Columnas:</span>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" [(ngModel)]="colPeriodo" class="rounded text-blue-600" /> Periodo
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" [(ngModel)]="colRegional" class="rounded text-blue-600" /> Regional
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" [(ngModel)]="colRegimen" class="rounded text-blue-600" /> Régimen
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" [(ngModel)]="colIps" class="rounded text-blue-600" /> IPS
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" [(ngModel)]="colCausal" class="rounded text-blue-600" /> Causal
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" [(ngModel)]="colValor" class="rounded text-blue-600" /> Valor Glosa
+        </label>
       </div>
 
       <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -142,12 +171,12 @@ const FILAS: FilaTableroEps[] = [
           <thead class="bg-slate-50">
             <tr>
               <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Factura</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Periodo</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Regional</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Régimen</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">IPS</th>
-              <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Causal</th>
-              <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Valor glosa</th>
+              <th *ngIf="colPeriodo" class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Periodo</th>
+              <th *ngIf="colRegional" class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Regional</th>
+              <th *ngIf="colRegimen" class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Régimen</th>
+              <th *ngIf="colIps" class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">IPS</th>
+              <th *ngIf="colCausal" class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Causal</th>
+              <th *ngIf="colValor" class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Valor glosa</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
@@ -156,12 +185,12 @@ const FILAS: FilaTableroEps[] = [
                 class="hover:bg-slate-50 cursor-pointer"
                 [style.background-color]="detalle()?.factura === f.factura ? 'color-mix(in srgb, var(--color-brand) 10%, white)' : null">
               <td class="px-4 py-3 text-sm font-mono font-bold text-slate-900">{{ f.factura }}</td>
-              <td class="px-4 py-3 text-sm text-slate-700">{{ f.periodo }}</td>
-              <td class="px-4 py-3 text-sm text-slate-700">{{ f.regional }}</td>
-              <td class="px-4 py-3 text-sm text-slate-700">{{ f.regimen }}</td>
-              <td class="px-4 py-3 text-sm text-slate-700">{{ f.ips }}</td>
-              <td class="px-4 py-3 text-sm text-slate-700">{{ f.causal }}</td>
-              <td class="px-4 py-3 text-sm text-right font-medium text-rose-700">{{ f.valorGlosa | currency:'COP':'symbol':'1.0-0' }}</td>
+              <td *ngIf="colPeriodo" class="px-4 py-3 text-sm text-slate-700">{{ f.periodo }}</td>
+              <td *ngIf="colRegional" class="px-4 py-3 text-sm text-slate-700">{{ f.regional }}</td>
+              <td *ngIf="colRegimen" class="px-4 py-3 text-sm text-slate-700">{{ f.regimen }}</td>
+              <td *ngIf="colIps" class="px-4 py-3 text-sm text-slate-700">{{ f.ips }}</td>
+              <td *ngIf="colCausal" class="px-4 py-3 text-sm text-slate-700">{{ f.causal }}</td>
+              <td *ngIf="colValor" class="px-4 py-3 text-sm text-right font-medium text-rose-700">{{ f.valorGlosa | currency:'COP':'symbol':'1.0-0' }}</td>
             </tr>
             <tr *ngIf="filtradas().length === 0">
               <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">Ninguna factura con esos filtros.</td>
@@ -193,6 +222,14 @@ export class TableroEpsComponent {
   regimen = signal('TODOS');
   busqueda = signal('');
   detalle = signal<FilaTableroEps | null>(null);
+
+  modalColumnas = signal(false);
+  colPeriodo = true;
+  colRegional = true;
+  colRegimen = true;
+  colIps = true;
+  colCausal = true;
+  colValor = true;
 
   filtradas = computed(() => {
     const q = this.busqueda().trim().toLowerCase();

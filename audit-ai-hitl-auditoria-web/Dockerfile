@@ -4,7 +4,7 @@ WORKDIR /usr/src/app
 
 COPY package.json package-lock.json ./
 
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
@@ -12,4 +12,4 @@ RUN npm run build --prod
 
 FROM nginx:alpine
 
-COPY --from=builder /usr/src/app/dist/angular-starter/ /usr/share/nginx/html
+COPY --from=builder /usr/src/app/dist/angular-starter/browser/ /usr/share/nginx/html

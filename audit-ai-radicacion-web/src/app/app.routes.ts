@@ -10,6 +10,7 @@ export const routes: Routes = [
       { path: 'inicio', loadComponent: () => import('./pages/private/inicio/inicio.component').then(c => c.InicioComponent) },
       { path: 'radicacion', loadComponent: () => import('./pages/private/radicacion/radicacion.component').then(c => c.RadicacionComponent) },
       { path: 'radicaciones', loadComponent: () => import('./pages/private/radicaciones/radicaciones.component').then(c => c.RadicacionesComponent) },
+      { path: 'devoluciones', loadComponent: () => import('./pages/private/devoluciones/devoluciones.component').then(c => c.DevolucionesComponent) },
       { path: 'respuestas', loadComponent: () => import('./pages/private/respuestas/respuestas.component').then(c => c.RespuestasComponent) }
     ]
   }

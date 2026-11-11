@@ -2,7 +2,6 @@ import { Component, inject, HostListener, computed, signal } from '@angular/core
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { AdminService } from '../../../services/admin/admin.service';
-import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-private-layout',
@@ -211,8 +210,8 @@ import { environment } from '../../../../environments/environment';
               </button>
               <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-1">Portales</p>
               <div class="flex flex-wrap gap-1">
-                <a [href]="portals.hitl" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Auditoría</a>
-                <a [href]="portals.radicacion" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Radicación</a>
+                <a href="http://localhost:4210" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Auditoría</a>
+                <a href="http://localhost:4200" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Radicación</a>
                 <span class="px-2 py-1 rounded text-[11px] font-bold text-slate-900" style="background-color: var(--color-brand-secondary);">Admin</span>
               </div>
             </div>
@@ -235,7 +234,6 @@ import { environment } from '../../../../environments/environment';
 export class PrivateLayoutComponent {
   service = inject(AdminService);
   router = inject(Router);
-  readonly portals = environment.portals;
   menuAbierto = signal(true);
 
   alternarMenu() {

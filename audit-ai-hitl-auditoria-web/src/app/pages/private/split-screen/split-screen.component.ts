@@ -707,7 +707,7 @@ export interface CasoAuditoria {
                 </button>
 
                 <!-- Acciones Secundarias en Grid -->
-                <div class="grid grid-cols-3 gap-2">
+                <div class="grid grid-cols-2 gap-2">
                   <button 
                     (click)="activarEdicionInline(glosa)"
                     class="py-2 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-semibold flex items-center justify-center gap-1 transition"
@@ -722,14 +722,6 @@ export interface CasoAuditoria {
                     title="Mantener y ratificar glosa al 100% sin levantar"
                   >
                     <span>✕ Mantener 100%</span>
-                  </button>
-
-                  <button 
-                    (click)="escalarGlosa(glosa)"
-                    class="py-2 px-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold flex items-center justify-center gap-1 transition"
-                    title="Escalar a médico especialista auditor"
-                  >
-                    <span>⚑ Escalar</span>
                   </button>
                 </div>
               </div>
@@ -1578,7 +1570,7 @@ export class SplitScreenComponent implements OnInit {
         semaforo: {
           diasHabilesRestantes: 7,
           nivelRiesgo: 'VERDE',
-          colorHex: '#22C55E',
+          colorHex: 'var(--color-success)',
           mensajeNormativo: 'Plazo amplio de auditoría (Resolución 2284 de 2023)'
         },
         resumenFinanciero: {
@@ -1698,7 +1690,7 @@ export class SplitScreenComponent implements OnInit {
         semaforo: {
           diasHabilesRestantes: 3,
           nivelRiesgo: 'ROJO',
-          colorHex: '#EF4444',
+          colorHex: 'var(--color-danger)',
           mensajeNormativo: '¡ALERTA MÁXIMA DE VENCIMIENTO! Faltan 3 días hábiles para riesgo de glosa tácita'
         },
         resumenFinanciero: {
@@ -1875,7 +1867,7 @@ export class SplitScreenComponent implements OnInit {
             coordenadas: { x: 10.0, y: 40.0, width: 80.0, height: 14.0 },
             textoExtraidoOcr: 'CUPS 890201 Consulta Medicina General Urgencias. Valor liquidado en orden: $85.000 COP.',
             etiquetaCampo: 'Liquidación Tarifaria Excedida',
-            colorBorde: '#EF4444',
+            colorBorde: 'var(--color-danger)',
             mensajeHallazgo: 'Diferencia no pactada de $20.000 COP sobre la tarifa de contrato.'
           },
           {
@@ -1885,7 +1877,7 @@ export class SplitScreenComponent implements OnInit {
             coordenadas: { x: 10.0, y: 35.0, width: 80.0, height: 12.0 },
             textoExtraidoOcr: 'Hemograma IV validado por bacteriólogo a las 15:20 hrs. Valores dentro de rango estándar.',
             etiquetaCampo: 'Tarifa Laboratorio Excedida',
-            colorBorde: '#F59E0B',
+            colorBorde: 'var(--color-warning)',
             mensajeHallazgo: 'Validación técnica presente. Aplica tarifa contratada de $30.000 COP.'
           },
           {
@@ -1895,7 +1887,7 @@ export class SplitScreenComponent implements OnInit {
             coordenadas: { x: 10.0, y: 48.0, width: 80.0, height: 16.0 },
             textoExtraidoOcr: '...se administra O2 continuo por cánula nasal durante 4 hrs (14:30 - 18:30). Paciente satura 96% al aire ambiente...',
             etiquetaCampo: 'Tiempo O2 Incompleto',
-            colorBorde: '#3B82F6',
+            colorBorde: 'var(--color-brand)',
             mensajeHallazgo: 'Soporte documenta 4 horas de suministro vs 8 horas liquidadas.'
           }
         ],
@@ -1943,7 +1935,7 @@ export class SplitScreenComponent implements OnInit {
         semaforo: {
           diasHabilesRestantes: 8,
           nivelRiesgo: 'AMARILLO',
-          colorHex: '#F59E0B',
+          colorHex: 'var(--color-warning)',
           mensajeNormativo: 'Atención: Plazo intermedio de auditoría (8 días hábiles restantes)'
         },
         resumenFinanciero: {
@@ -2070,7 +2062,7 @@ export class SplitScreenComponent implements OnInit {
             coordenadas: { x: 8.0, y: 46.0, width: 84.0, height: 16.0 },
             textoExtraidoOcr: 'Ingreso por Urgencias derivado de Accidente de Tránsito (Atención SOAT). No consta radicado FURIPS.',
             etiquetaCampo: 'Soporte FURIPS Faltante',
-            colorBorde: '#EF4444',
+            colorBorde: 'var(--color-danger)',
             mensajeHallazgo: 'Formulario FURIPS obligatorio exigido por el Decreto 780 de 2016.'
           },
           {
@@ -2080,7 +2072,7 @@ export class SplitScreenComponent implements OnInit {
             coordenadas: { x: 8.0, y: 55.0, width: 84.0, height: 14.0 },
             textoExtraidoOcr: 'Autorización telefónica EPS: AUT-2026-99201 para valoración por traumatología y ortopedia.',
             etiquetaCampo: 'Autorización Ubicada',
-            colorBorde: '#10B981',
+            colorBorde: 'var(--color-success)',
             mensajeHallazgo: 'Autorización intrahospitalaria de urgencias confirmada en folio.'
           }
         ],
@@ -2128,7 +2120,7 @@ export class SplitScreenComponent implements OnInit {
         semaforo: {
           diasHabilesRestantes: 0,
           nivelRiesgo: 'ROJO',
-          colorHex: '#EF4444',
+          colorHex: 'var(--color-danger)',
           mensajeNormativo: 'RECHAZO SIN NUR: Paquete sin CUV expedido por MinSalud (Res. 0948 de 2026 art. 3.1).'
         },
         resumenFinanciero: {
@@ -2232,7 +2224,7 @@ export class SplitScreenComponent implements OnInit {
         semaforo: {
           diasHabilesRestantes: 2,
           nivelRiesgo: 'ROJO',
-          colorHex: '#EF4444',
+          colorHex: 'var(--color-danger)',
           mensajeNormativo: 'Resolución 2284 de 2023: Ciclo taxativo de devoluciones 5-5-5 y preclusión formal de términos'
         },
         resumenFinanciero: {
@@ -2348,7 +2340,7 @@ export class SplitScreenComponent implements OnInit {
         semaforo: {
           diasHabilesRestantes: 0,
           nivelRiesgo: 'VERDE',
-          colorHex: '#EAB308',
+          colorHex: 'var(--color-warning)',
           mensajeNormativo: 'Ley 1438 de 2011 Art. 57 y Decreto 441 de 2022 Art. 2.5.3.4.4.4: Título Valor por Aceptación Tácita tras 20 días hábiles'
         },
         resumenFinanciero: {

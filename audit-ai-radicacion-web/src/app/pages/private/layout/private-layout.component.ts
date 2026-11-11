@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
 import { AuthService } from '../../../services/auth/auth.service';
 import { RadicacionService } from '../../../services/radicacion/radicacion.service';
-import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-private-layout',
@@ -83,6 +82,15 @@ import { environment } from '../../../../environments/environment';
             Radicaciones
             <span class="ml-auto text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">
               {{ service.radicacionesDelUsuario().length }}
+            </span>
+          </a>
+          <a routerLink="/devoluciones"
+             routerLinkActive="bg-[color-mix(in_srgb,var(--color-brand)_12%,white)] text-[var(--color-brand)] font-bold border-r-4 border-[var(--color-brand)]"
+             (click)="navegarYCerrar($event, '/devoluciones')"
+             class="px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+            Devoluciones (SCR-15)
+            <span class="ml-auto bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.5 rounded font-bold">
+              2 CAMINOS
             </span>
           </a>
           <a routerLink="/respuestas"
@@ -186,9 +194,9 @@ import { environment } from '../../../../environments/environment';
               </button>
               <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-1">Portales</p>
               <div class="flex flex-wrap gap-1">
-                <a [href]="portals.hitl" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Auditoría</a>
+                <a href="http://localhost:4210" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Auditoría</a>
                 <span class="px-2 py-1 rounded text-[11px] font-bold text-slate-900" style="background-color: var(--color-brand-secondary);">Radicación</span>
-                <a [href]="portals.admin" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Admin</a>
+                <a href="http://localhost:4220" class="px-2 py-1 rounded border border-slate-200 text-[11px] text-slate-700 hover:bg-white">Admin</a>
               </div>
               <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-1">Escenarios</p>
               <button type="button" (click)="cargarEscenario('EXITO')"
@@ -218,7 +226,6 @@ export class PrivateLayoutComponent {
   auth = inject(AuthService);
   service = inject(RadicacionService);
   router = inject(Router);
-  readonly portals = environment.portals;
   menuAbierto = signal(true);
 
   alternarMenu() {
